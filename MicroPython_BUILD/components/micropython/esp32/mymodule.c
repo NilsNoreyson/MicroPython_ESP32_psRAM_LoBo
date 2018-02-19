@@ -167,7 +167,7 @@ bytes_written  = fwrite(buf , sizeof(char), bytes_read , f );
 #include <stdio.h>
 
 STATIC mp_obj_t mymodule_hello(void) {
-	ESP_LOGI(TAG, "Initializing SD card");
+    ESP_LOGI(TAG, "Initializing SD card");
     ESP_LOGI(TAG, "Using SDMMC peripheral");
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     // This initializes the slot without card detect (CD) and write protect (WP) signals.
