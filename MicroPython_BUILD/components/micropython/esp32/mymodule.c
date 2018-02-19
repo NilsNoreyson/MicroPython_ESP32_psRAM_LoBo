@@ -219,7 +219,7 @@ STATIC mp_obj_t mymodule_hello(void) {
     FILE* f = fopen("/sdcard/hello2.txt", "w");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
-        return;
+        return mp_const_none;
     }
     fprintf(f, "Hello %s!\n", card->cid.name);
     fclose(f);
