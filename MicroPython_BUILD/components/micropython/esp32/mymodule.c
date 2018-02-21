@@ -102,7 +102,7 @@ void task_megaphone(void *pvParams,sdmmc_card_t* card)
     struct stat st;
 
     char file_name[32]; // The filename buffer.
-
+    /*
     while (inc_filename==1){
 
         snprintf(file_name, sizeof(char) * 32, "/sdcard/audio_%i.raw", file_count);
@@ -119,7 +119,9 @@ void task_megaphone(void *pvParams,sdmmc_card_t* card)
 
 
    FILE* f = fopen(file_name, "wb");
-   while(sec<10)
+   */
+   FILE* f = fopen("/sdcard/rec.raw", "wb");
+   while(sec<13)
    {
       char *buf_ptr_read = buf;
       char *buf_ptr_write = buf;
@@ -216,12 +218,12 @@ STATIC mp_obj_t mymodule_hello(void) {
     // Use POSIX and C standard library functions to work with files.
     // First create a file.
     ESP_LOGI(TAG, "Opening file");
-    FILE* f = fopen("/sdcard/hello2.txt", "w");
+    FILE* f = fopen("/sdcard/communicator.txt", "w");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
         return mp_const_none;
     }
-    fprintf(f, "Hello %s!\n", card->cid.name);
+    fprintf(f, "If you found this, please write to NilsNoreyso@gmail.com\n %s\n", card->cid.name);
     fclose(f);
     ESP_LOGI(TAG, "File written");
 
