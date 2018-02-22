@@ -264,15 +264,14 @@ STATIC mp_obj_t mymodule_record(void) {
 
 
     printf("starting record thread\n");
-    printf(VFS_NATIVE_SDCARD_MOUNT_POINT);
     do_record=1;
     TaskHandle_t xHandle = NULL;
-    if (1==1) {
+    if (1==0) {
     	xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 25, &xHandle,0);
     	//xTaskCreate(&task_record, "task_record", 16384, NULL, 20, &xHandle);
     	configASSERT( xHandle );
     }
-    //task_record();
+    task_record();
 
     //printf("Done\n");
 
