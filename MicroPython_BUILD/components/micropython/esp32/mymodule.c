@@ -22,7 +22,7 @@
 #include "esp_log.h"
 #include "driver/i2s.h"
 #include "esp_sleep.h"
-
+#include "extmod/vfs_native.h"
 
 #define TAG "main"
 
@@ -35,13 +35,14 @@
 #include "driver/sdmmc_host.h"
 #include "driver/sdspi_host.h"
 #include "sdmmc_cmd.h"
-
+#include <stdio.h>
 
 #include "driver/gpio.h"
 
 
 #define GPIO_OUTPUT_IO_0 27
 
+int do_record = 1;
 
 static void init_i2s()
 {
@@ -73,7 +74,11 @@ static void init_i2s()
 }
 
 
-void task_megaphone(void *pvParams,sdmmc_card_t* card)
+void set_do_recod(int state){
+	do_record=state;
+}
+
+void task_record()
 {
    gpio_pad_select_gpio(GPIO_OUTPUT_IO_0);
    gpio_set_direction(GPIO_OUTPUT_IO_0, GPIO_MODE_OUTPUT);
@@ -121,7 +126,22 @@ void task_megaphone(void *pvParams,sdmmc_card_t* card)
    FILE* f = fopen(file_name, "wb");
    */
    FILE* f = fopen("/sdcard/rec.raw", "wb");
-   while(sec<13)
+
+   if (f == NULL) {
+       ESP_LOGE(TAG, "Failed to open file for writing");
+       ESP_LOGE(TAG,VFS_NATIVE_SDCARD_MOUNT_POINT);
+       printf('SD not mounted');
+       printf(VFS_NATIVE_SDCARD_MOUNT_POINT);
+
+       fclose(f);
+       gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+       do_record=1;
+       vTaskDelete(NULL);
+       return;
+
+   }
+
+   while((sec<14) && (do_record==1))
    {
       char *buf_ptr_read = buf;
       char *buf_ptr_write = buf;
@@ -147,28 +167,43 @@ bytes_written  = fwrite(buf , sizeof(char), bytes_read , f );
 
 
       if(cnt >= 44100) {
-	printf("%d\n",bytes_read);
-	printf("%d\n",bytes_written);
-	sec+=1;
+		 //printf("%d\n",bytes_read);
+		 //printf("%d\n",bytes_written);
+		 sec+=1;
          gettimeofday(&tv, &tz);
          micros = tv.tv_usec + tv.tv_sec * 1000000;
          delta = micros - micros_prev;
          micros_prev = micros;
-         printf("%d samples in %" PRIu64 " usecs\n", cnt, delta);
+         //printf("%d samples in %" PRIu64 " usecs\n", cnt, delta);
+         //printf("Do record %d\n",do_record);
 
          cnt = 0;
       }
    }
- fclose(f);
-         printf("Saving Done");
+   fclose(f);
+
+
+
+   // All done, unmount partition and disable SDMMC or SPI peripheral
+   esp_vfs_fat_sdmmc_unmount();
+   sleep(0.5);
+   vTaskDelay(1000 / portTICK_RATE_MS);
+   ESP_LOGI(TAG, "Card unmounted");
    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+   do_record=1;
+   vTaskDelete(NULL);
+   //return;
+
+
+
 }
 
 
 
-#include <stdio.h>
 
-STATIC mp_obj_t mymodule_hello(void) {
+
+STATIC mp_obj_t mymodule_record(void) {
+
     ESP_LOGI(TAG, "Initializing SD card");
     ESP_LOGI(TAG, "Using SDMMC peripheral");
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -228,26 +263,43 @@ STATIC mp_obj_t mymodule_hello(void) {
     ESP_LOGI(TAG, "File written");
 
 
-    printf("starting app_main()\n");
-    //xTaskCreatePinnedToCore(&task_megaphone, "task_megaphone", 16384, NULL, 20, NULL, 0);
-    task_megaphone(NULL, card);
+    printf("starting record thread\n");
+    printf(VFS_NATIVE_SDCARD_MOUNT_POINT);
+    do_record=1;
+    TaskHandle_t xHandle = NULL;
+    if (1==1) {
+    	xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 25, &xHandle,0);
+    	//xTaskCreate(&task_record, "task_record", 16384, NULL, 20, &xHandle);
+    	configASSERT( xHandle );
+    }
+    //task_record();
 
-    // All done, unmount partition and disable SDMMC or SPI peripheral
-    esp_vfs_fat_sdmmc_unmount();
-    ESP_LOGI(TAG, "Card unmounted");
+    //printf("Done\n");
 
-    printf("Done\n");
-
-    const int deep_sleep_sec = 1000000;
-    ESP_LOGI(TAG, "Entering deep sleep for %d seconds", deep_sleep_sec);
-    //esp_deep_sleep(1000000LL * deep_sleep_sec);
    return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_hello_obj, mymodule_hello);
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_record_obj, mymodule_record);
+
+
+
+STATIC mp_obj_t mymodule_stop(void) {
+	set_do_recod(0);
+	return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_stop_obj, mymodule_stop);
+
+STATIC mp_obj_t mymodule_start(void) {
+	set_do_recod(1);
+	return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_start_obj, mymodule_start);
+
 
 STATIC const mp_map_elem_t mymodule_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_mymodule) },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_hello), (mp_obj_t)&mymodule_hello_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_hello), (mp_obj_t)&mymodule_record_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&mymodule_stop_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_start), (mp_obj_t)&mymodule_start_obj },
 };
 
 
