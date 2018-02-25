@@ -43,6 +43,7 @@
 #define GPIO_OUTPUT_IO_0 27
 
 int do_record = 1;
+int threaded_task = 1;
 
 static void init_i2s()
 {
@@ -80,6 +81,65 @@ void set_do_recod(int state){
 
 void task_record()
 {
+
+	ESP_LOGI(TAG, "Initializing SD card");
+    ESP_LOGI(TAG, "Using SDMMC peripheral");
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    // This initializes the slot without card detect (CD) and write protect (WP) signals.
+    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
+    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+
+    // GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups.
+    // Internal pull-ups are not sufficient. However, enabling internal pull-ups
+    // does make a difference some boards, so we do that here.
+    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);   // CMD, needed in 4- and 1- line modes
+    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);    // D0, needed in 4- and 1-line modes
+    gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);    // D1, needed in 4-line mode only
+    gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
+    gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);   // D3, needed in 4- and 1-line modes
+
+    // Options for mounting the filesystem.
+    // If format_if_mount_failed is set to true, SD card will be partitioned and
+    // formatted in case when mounting fails.
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = flase,
+        .max_files = 5
+    };
+
+
+    // Use settings defined above to initialize SD card and mount FAT filesystem.
+    // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
+    // Please check its source code and implement error recovery when developing
+    // production applications.
+    sdmmc_card_t* card;
+    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Failed to mount filesystem. "
+                "If you want the card to be formatted, set format_if_mount_failed = true.");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize the card (%d). "
+                "Make sure SD card lines have pull-up resistors in place.", ret);
+        }
+        return mp_const_none;
+    }
+
+    // Card has been initialized, print its properties
+    sdmmc_card_print_info(stdout, card);
+
+    // Use POSIX and C standard library functions to work with files.
+    // First create a file.
+    ESP_LOGI(TAG, "Opening file");
+    FILE* f_c = fopen("/sdcard/communicator.txt", "w");
+    if (f_c == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return mp_const_none;
+    }
+    fprintf(f_c, "If you found this, please write to NilsNoreyso@gmail.com\n %s\n", card->cid.name);
+    fclose(f_c);
+    ESP_LOGI(TAG, "File written");
+
    gpio_pad_select_gpio(GPIO_OUTPUT_IO_0);
    gpio_set_direction(GPIO_OUTPUT_IO_0, GPIO_MODE_OUTPUT);
    gpio_set_level(GPIO_OUTPUT_IO_0, 1);
@@ -141,7 +201,7 @@ void task_record()
 
    }
 
-   while((sec<14) && (do_record==1))
+   while((sec<13) && (do_record==1))
    {
       char *buf_ptr_read = buf;
       char *buf_ptr_write = buf;
@@ -174,7 +234,7 @@ bytes_written  = fwrite(buf , sizeof(char), bytes_read , f );
          micros = tv.tv_usec + tv.tv_sec * 1000000;
          delta = micros - micros_prev;
          micros_prev = micros;
-         //printf("%d samples in %" PRIu64 " usecs\n", cnt, delta);
+         printf("%d samples in %" PRIu64 " usecs\n", cnt, delta);
          //printf("Do record %d\n",do_record);
 
          cnt = 0;
@@ -186,12 +246,13 @@ bytes_written  = fwrite(buf , sizeof(char), bytes_read , f );
 
    // All done, unmount partition and disable SDMMC or SPI peripheral
    esp_vfs_fat_sdmmc_unmount();
-   sleep(0.5);
-   vTaskDelay(1000 / portTICK_RATE_MS);
+   vTaskDelay(100 / portTICK_RATE_MS);
    ESP_LOGI(TAG, "Card unmounted");
    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
    do_record=1;
-   vTaskDelete(NULL);
+   if (threaded_task==1) {
+	   vTaskDelete(NULL);
+   }
    //return;
 
 
@@ -204,80 +265,43 @@ bytes_written  = fwrite(buf , sizeof(char), bytes_read , f );
 
 STATIC mp_obj_t mymodule_record(void) {
 
-    ESP_LOGI(TAG, "Initializing SD card");
-    ESP_LOGI(TAG, "Using SDMMC peripheral");
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-
-    // GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups.
-    // Internal pull-ups are not sufficient. However, enabling internal pull-ups
-    // does make a difference some boards, so we do that here.
-    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);   // CMD, needed in 4- and 1- line modes
-    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);    // D0, needed in 4- and 1-line modes
-    gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);    // D1, needed in 4-line mode only
-    gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
-    gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);   // D3, needed in 4- and 1-line modes
-
-    // Options for mounting the filesystem.
-    // If format_if_mount_failed is set to true, SD card will be partitioned and
-    // formatted in case when mounting fails.
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = true,
-        .max_files = 5
-    };
-
-
-    // Use settings defined above to initialize SD card and mount FAT filesystem.
-    // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
-    // Please check its source code and implement error recovery when developing
-    // production applications.
-    sdmmc_card_t* card;
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Failed to mount filesystem. "
-                "If you want the card to be formatted, set format_if_mount_failed = true.");
-        } else {
-            ESP_LOGE(TAG, "Failed to initialize the card (%d). "
-                "Make sure SD card lines have pull-up resistors in place.", ret);
-        }
-        return mp_const_none;
-    }
-
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, card);
-
-    // Use POSIX and C standard library functions to work with files.
-    // First create a file.
-    ESP_LOGI(TAG, "Opening file");
-    FILE* f = fopen("/sdcard/communicator.txt", "w");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing");
-        return mp_const_none;
-    }
-    fprintf(f, "If you found this, please write to NilsNoreyso@gmail.com\n %s\n", card->cid.name);
-    fclose(f);
-    ESP_LOGI(TAG, "File written");
 
 
     printf("starting record thread\n");
     do_record=1;
     TaskHandle_t xHandle = NULL;
-    if (1==0) {
+    if (threaded_task==1) {
     	xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 25, &xHandle,0);
     	//xTaskCreate(&task_record, "task_record", 16384, NULL, 20, &xHandle);
     	configASSERT( xHandle );
     }
-    task_record();
+    else{
+    	task_record();
+    }
+
 
     //printf("Done\n");
 
    return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_record_obj, mymodule_record);
+
+/*
+ * https://www.eevblog.com/forum/microcontrollers/esp32-deep-sleep/
+ * sleep deeper
+ * 		ESP_LOGI(TAG, "Awake\n");
+		WRITE_PERI_REG(RTC_CNTL_PWC_REG, 0x00120240);
+		ESP_LOGI(TAG, "RTC_CNTL_OPTIONS0_REG       0x%08x", READ_PERI_REG(RTC_CNTL_OPTIONS0_REG));
+		ESP_LOGI(TAG, "RTC_CNTL_ANA_CONF_REG       0x%08x", READ_PERI_REG(RTC_CNTL_ANA_CONF_REG));
+		ESP_LOGI(TAG, "RTC_CNTL_PWC_REG            0x%08x", READ_PERI_REG(RTC_CNTL_PWC_REG));
+		ESP_LOGI(TAG, "RTC_CNTL_DIG_PWC_REG        0x%08x", READ_PERI_REG(RTC_CNTL_DIG_PWC_REG));
+		sleep(2);
+		ESP_LOGI(TAG, "Entering deep sleep\n");
+		sleep(1);
+		esp_deep_sleep(15*MHZ);
+		ESP_LOGI(TAG, "Sleep failed\n");
+		sleep(1);
+ */
 
 
 

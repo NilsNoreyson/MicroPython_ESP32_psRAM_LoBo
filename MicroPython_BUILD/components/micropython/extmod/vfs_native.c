@@ -710,7 +710,7 @@ static void _sdcard_mount()
 		#else
 	        // Use 4-line SD mode
 	        gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);
-	        gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
+	        //gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
 	        gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);
 	        gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);
 	        gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);
@@ -718,7 +718,6 @@ static void _sdcard_mount()
 		    card_mode = 3;
 		#endif
 	#endif
-
 	esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES
