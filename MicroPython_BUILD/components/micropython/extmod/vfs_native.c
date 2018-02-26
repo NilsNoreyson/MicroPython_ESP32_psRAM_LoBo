@@ -710,7 +710,7 @@ static void _sdcard_mount()
 		#else
 	        // Use 4-line SD mode
 	        gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);
-	        //gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
+	        gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
 	        gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);
 	        gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);
 	        gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);
