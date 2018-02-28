@@ -135,7 +135,7 @@ void task_record()
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
-    */
+
     // Use POSIX and C standard library functions to work with files.
     // First create a file.
     ESP_LOGI(TAG, "Opening file");
@@ -151,7 +151,7 @@ void task_record()
     fprintf(f_c, "If you found this, please write to NilsNoreyso@gmail.com\n");
     fclose(f_c);
     ESP_LOGI(TAG, "File written");
-
+   */
    gpio_pad_select_gpio(GPIO_OUTPUT_IO_0);
    gpio_set_direction(GPIO_OUTPUT_IO_0, GPIO_MODE_OUTPUT);
    gpio_set_level(GPIO_OUTPUT_IO_0, 1);
@@ -166,7 +166,7 @@ void task_record()
    uint64_t micros_prev = micros;
    uint64_t delta = 0;
 
-   init_i2s();
+   //init_i2s();
 
    int cnt = 0;
    int sec = 0;
@@ -216,7 +216,7 @@ void task_record()
 
    }
 
-   while((sec<13) && (do_record==1))
+   while((sec<15) && (do_record==1))
    {
       char *buf_ptr_read = buf;
       char *buf_ptr_write = buf;
@@ -343,12 +343,20 @@ STATIC mp_obj_t mymodule_start(void) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_start_obj, mymodule_start);
 
+STATIC mp_obj_t mymodule_initi2s(void) {
+	init_i2s();
+	return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_initi2s_obj, mymodule_initi2s);
+
+
 
 STATIC const mp_map_elem_t mymodule_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_mymodule) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_hello), (mp_obj_t)&mymodule_record_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&mymodule_stop_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_start), (mp_obj_t)&mymodule_start_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_initi2s), (mp_obj_t)&mymodule_initi2s_obj },
 };
 
 
