@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2013, 2014 Damien P. George
  * Copyright (c) 2014-2017 Paul Sokolovsky
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +38,7 @@
 
 #if MICROPY_PY_SYS
 
-#include "genhdr/mpversion.h"
+#include "esp32/mpversion.h"
 
 // defined per port; type of these is irrelevant, just need pointer
 extern struct _mp_dummy_t mp_sys_stdin_obj;

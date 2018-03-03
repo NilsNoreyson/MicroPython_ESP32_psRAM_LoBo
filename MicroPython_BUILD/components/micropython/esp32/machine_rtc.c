@@ -1,12 +1,12 @@
 /*
- * This file is part of the Micro Python project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2013 2014 Damien P. George
  * Copyright (c) 2015 Daniel Campora
  * Copyright (c) 2017 "Eric Poulsen" <eric@zyxod.com>
- * Copyright (c) 2017 Boris Lovosevic
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -31,54 +31,24 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "sdkconfig.h"
 #include "apps/sntp/sntp.h"
+#include "driver/rtc_io.h"
+#include "esp_log.h"
+#include "rom/crc.h"
 
 #include "py/nlr.h"
 #include "py/obj.h"
 #include "py/objstr.h"
 #include "py/runtime.h"
-#include "esp_system.h"
 #include "machine_rtc.h"
-#include "soc/rtc.h"
-#include "esp_clk.h"
 
-#include "sdkconfig.h"
-#include "esp_attr.h"
-#include "esp_log.h"
-#include "rom/ets_sys.h"
-#include "rom/uart.h"
-#include "rom/crc.h"
-#include "soc/soc.h"
-#include "soc/rtc.h"
-#include "soc/rtc_cntl_reg.h"
 #include "mphalport.h"
+#include "machine_pin.h"
+
 
 #define RTC_MEM_INT_SIZE 64
 #define RTC_MEM_STR_SIZE 2048
-
-#define MACHINE_RTC_VALID_EXT_PINS \
-( \
-    (1ll << 0)  | \
-    (1ll << 2)  | \
-    (1ll << 4)  | \
-    (1ll << 12) | \
-    (1ll << 13) | \
-    (1ll << 14) | \
-    (1ll << 15) | \
-    (1ll << 25) | \
-    (1ll << 26) | \
-    (1ll << 27) | \
-    (1ll << 32) | \
-    (1ll << 33) | \
-    (1ll << 34) | \
-    (1ll << 35) | \
-    (1ll << 36) | \
-    (1ll << 37) | \
-    (1ll << 38) | \
-    (1ll << 39)   \
-)
-
-#define MACHINE_RTC_LAST_EXT_PIN 39
 
 static int RTC_DATA_ATTR rtc_mem_int[RTC_MEM_INT_SIZE] = { 0 };
 static char RTC_DATA_ATTR rtc_mem_str[RTC_MEM_STR_SIZE] = { 0 };
@@ -129,7 +99,7 @@ void rtc_init0(void) {
     rtc_init_mem();
 }
 
-// Set system datetime
+// Set system date time
 //-------------------------------------------------------
 STATIC mp_obj_t mach_rtc_datetime(const mp_obj_t *args) {
     struct tm tm_info;
@@ -167,10 +137,16 @@ STATIC mp_obj_t mach_rtc_datetime(const mp_obj_t *args) {
     if (seconds == -1) seconds = 0;
 
     struct timeval now;
-    now.tv_sec = seconds;
+
+	gettimeofday(&now, NULL);
+	uint64_t ticks_us = ((((uint64_t)now.tv_sec * 1000000) + (uint64_t)now.tv_usec) - getTicks_base());
+
+	now.tv_sec = seconds;
     now.tv_usec = 0;
-    settimeofday(&now, NULL);
-	mp_hal_ticks_base = now.tv_sec;
+
+	settimeofday(&now, NULL);
+	// Set new base for ticks counting
+    setTicks_base((((uint64_t)now.tv_sec * 1000000) - ticks_us));
 
     mach_rtc_set_seconds_since_epoch(seconds);
 
@@ -240,43 +216,56 @@ void sntp_task (void *pvParameters)
 	mach_rtc_obj_t *rtc = (mach_rtc_obj_t *)pvParameters;
     struct timeval tv;
     uint32_t ellapsed=0, start_time;
+    uint64_t ticks_us;
+    int check_interval = 100;
 
-	gettimeofday(&tv, NULL);
+    gettimeofday(&tv, NULL);
 	start_time = tv.tv_sec;
+	// get current ticks_us
+	ticks_us = ((((uint64_t)tv.tv_sec * 1000000) + (uint64_t)tv.tv_usec) - getTicks_base());
 
+	ESP_LOGD("SNTP_TASK", "start synchronization");
 	start_sntp(rtc->sntp_server_name);
 
     while (1) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(check_interval / portTICK_PERIOD_MS);
     	gettimeofday(&tv, NULL);
+    	ticks_us += check_interval * 1000;
+    	ellapsed += check_interval;
 
     	if (sntp_is_synced) {
 			sntp_stop();
+		    sntp_is_synced = false;
+			ESP_LOGD("SNTP_TASK", "time synchronized");
+			// Set new base for ticks counting
+			setTicks_base((((uint64_t)tv.tv_sec * 1000000) + (uint64_t)tv.tv_usec - ticks_us));
+
 			if (xSemaphoreTake(sntp_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE) {
 				rtc->synced = true;
-				// Update the tick base
-				mp_hal_ticks_base = tv.tv_sec;
 				seconds_at_boot = tv.tv_sec;
 				xSemaphoreGive(sntp_mutex);
 			}
-			start_time = tv.tv_sec;
-			ellapsed = 0;
 			// Terminate the task if periodic update is not requested
-			if (rtc->sntp_update_period == 0) break;
+			if (rtc->sntp_update_period <= 10) break;
+			// else prepare for next update
+			ESP_LOGD("SNTP_TASK", "next update in %d seconds", rtc->sntp_update_period);
+			start_time = tv.tv_sec;
+			ticks_us = ((((uint64_t)tv.tv_sec * 1000000) + (uint64_t)tv.tv_usec) - getTicks_base());
+			ellapsed = 0;
+		    check_interval = 1000;
 		}
 		else {
-			if (xSemaphoreTake(sntp_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE) {
-				if (!rtc->synced) start_time = 0;
-				xSemaphoreGive(sntp_mutex);
-			}
 			ellapsed = tv.tv_sec - start_time;
 			if (ellapsed >= rtc->sntp_update_period) {
 				// Update period expired, update time from server
+			    check_interval = 100;
 				start_time = tv.tv_sec;
+				ESP_LOGD("SNTP_TASK", "start synchronization");
 			    start_sntp(rtc->sntp_server_name);
 			}
 		}
     }
+    // Terminate the task
     sntp_handle = NULL;
     vTaskDelete(NULL);
 }
@@ -295,7 +284,7 @@ STATIC mp_obj_t mach_rtc_ntp_sync(size_t n_args, const mp_obj_t *pos_args, mp_ma
 
 
     int period = args[1].u_int;
-    if (period < 600) period = 0;
+    if (period < 300) period = 10;
 
     char srv_name[64];
 	sprintf(srv_name, "%s", DEFAULT_SNTP_SERVER);
@@ -342,7 +331,7 @@ STATIC mp_obj_t mach_rtc_ntp_sync(size_t n_args, const mp_obj_t *pos_args, mp_ma
 
 	if (sntp_handle == NULL) {
 		// Create and start sntp task
-		if (xTaskCreate(&sntp_task, "SNTP", 2048, (void *)self, CONFIG_MICROPY_TASK_PRIORITY+1, &sntp_handle) != pdPASS) {
+		if (xTaskCreate(&sntp_task, "SNTP_TASK", 2048, (void *)self, CONFIG_MICROPY_TASK_PRIORITY+1, &sntp_handle) != pdPASS) {
 	    	mp_raise_msg(&mp_type_OSError, "Error creating SNTP task");
 		}
 	}
@@ -397,11 +386,12 @@ STATIC mp_obj_t machine_rtc_wake_on_ext0(size_t n_args, const mp_obj_t *pos_args
 
     if (args[ARG_pin].u_obj == mp_const_none) {
         machine_rtc_config.ext0_pin = -1; // "None"
-    } else {
-        gpio_num_t pin_id = machine_pin_get_id(args[ARG_pin].u_obj);
+    }
+    else {
+        gpio_num_t pin_id = machine_pin_get_gpio(args[ARG_pin].u_obj);
         if (pin_id != machine_rtc_config.ext0_pin) {
-            if (!((1ll << pin_id) & MACHINE_RTC_VALID_EXT_PINS)) {
-                nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "invalid pin"));
+            if (!rtc_gpio_is_valid_gpio(pin_id)) {
+                nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "invalid ext0 pin"));
             }
             machine_rtc_config.ext0_pin = pin_id;
         }
@@ -433,18 +423,17 @@ STATIC mp_obj_t machine_rtc_wake_on_ext1(size_t n_args, const mp_obj_t *pos_args
         ext1_pins = 0;
 
         for (int i = 0; i < len; i++) {
-
-            gpio_num_t pin_id = machine_pin_get_id(elem[i]);
-            // mp_int_t pin = mp_obj_get_int(elem[i]);
+            gpio_num_t pin_id = machine_pin_get_gpio(elem[i]);
             uint64_t pin_bit = (1ll << pin_id);
 
-            if (!(pin_bit & MACHINE_RTC_VALID_EXT_PINS)) {
-                nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "invalid pin"));
+            if (!rtc_gpio_is_valid_gpio(pin_id)) {
+                nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "invalid ext1 pin"));
                 break;
             }
             ext1_pins |= pin_bit;
         }
     }
+    else ext1_pins = 0;
 
     machine_rtc_config.ext1_level = args[ARG_level].u_bool;
     machine_rtc_config.ext1_pins = ext1_pins;
@@ -525,6 +514,36 @@ STATIC mp_obj_t esp_rtcmem_clear(mp_obj_t self_in) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp_rtcmem_clear_obj, esp_rtcmem_clear);
 
+//--------------------------------------------------------------------------------------------
+STATIC void machine_rtc_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind)
+{
+	char ext0[64] = {'\0'};
+	char ext1[128] = {'\0'};
+
+	if (machine_rtc_config.ext0_pin >= 0) {
+		sprintf(ext0, "Wake on EXT0: Pin=%d, Level=%s", machine_rtc_config.ext0_pin, machine_rtc_config.ext0_level ? "High" : "Low");
+	}
+	if (machine_rtc_config.ext1_pins > 0) {
+		if (strlen(ext0) > 0) strcat(ext0, ";  ");
+		sprintf(ext1, "Wake on EXT1: Pins (");
+		char stemp[8];
+		for (int i=0; i<40; i++) {
+            if (machine_rtc_config.ext1_pins & (1ll << i)) {
+            	sprintf(stemp, "%d,", i);
+            	strcat(ext1, stemp);
+            }
+		}
+		if (ext1[strlen(ext1)-1] == ',') ext1[strlen(ext1)-1] = '\0';
+		strcat(ext1, "), Level: ");
+		sprintf(stemp, "%s", machine_rtc_config.ext1_level ? "High" : "Low");
+		strcat(ext1, stemp);
+	}
+	mp_printf(print, "RTC ( ");
+	if (strlen(ext0) > 0) mp_printf(print, "%s", ext0);
+	if (strlen(ext1) > 0) mp_printf(print, "%s", ext1);
+	mp_printf(print, " )");
+}
+
 
 //=========================================================
 STATIC const mp_map_elem_t mach_rtc_locals_dict_table[] = {
@@ -548,6 +567,7 @@ STATIC MP_DEFINE_CONST_DICT(mach_rtc_locals_dict, mach_rtc_locals_dict_table);
 const mp_obj_type_t mach_rtc_type = {
     { &mp_type_type },
     .name = MP_QSTR_RTC,
+	.print = machine_rtc_print,
     .make_new = mach_rtc_make_new,
     .locals_dict = (mp_obj_t)&mach_rtc_locals_dict,
 };

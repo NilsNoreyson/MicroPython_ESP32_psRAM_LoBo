@@ -1,11 +1,12 @@
 /*
- * This file is part of the MicroPython project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * Development of the code in this file was sponsored by Microbric Pty Ltd
  *
  * The MIT License (MIT)
  *
  * Copyright (c) 2016 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "driver/rtc_io.h"
 #include "py/runtime.h"
 #include "py/mphal.h"
 #include "modmachine.h"
@@ -120,7 +122,7 @@ void machine_pins_deinit(void) {
 STATIC void IRAM_ATTR machine_pin_isr_handler(void *arg) {
     machine_pin_obj_t *self = arg;
     mp_obj_t handler = MP_STATE_PORT(machine_pin_irq_handler)[self->id];
-    mp_sched_schedule(handler, MP_OBJ_FROM_PTR(self));
+    mp_sched_schedule(handler, MP_OBJ_FROM_PTR(self), NULL);
 }
 
 gpio_num_t machine_pin_get_id(mp_obj_t pin_in) {
@@ -150,6 +152,7 @@ STATIC mp_obj_t machine_pin_obj_init_helper(const machine_pin_obj_t *self, size_
     mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
     // configure the pin for gpio
+    if (rtc_gpio_is_valid_gpio(self->id)) rtc_gpio_deinit(self->id);
     gpio_pad_select_gpio(self->id);
 
     // set initial value (do this before configuring mode/pull)
