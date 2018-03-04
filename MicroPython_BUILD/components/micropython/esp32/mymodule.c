@@ -43,6 +43,7 @@
 #define GPIO_OUTPUT_IO_0 27
 
 int do_record = 1;
+int is_recording = 0;
 int threaded_task = 1;
 
 static void init_i2s()
@@ -81,82 +82,11 @@ void set_do_recod(int state){
 
 void task_record()
 {
-	/*
-	ESP_LOGI(TAG, "Initializing SD card");
-    ESP_LOGI(TAG, "Using SDMMC peripheral");
-
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-
-    // GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups.
-    // Internal pull-ups are not sufficient. However, enabling internal pull-ups
-    // does make a difference some boards, so we do that here.
-    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);
-
-    // Options for mounting the filesystem.
-    // If format_if_mount_failed is set to true, SD card will be partitioned and
-    // formatted in case when mounting fails.
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,
-        .max_files = 5
-    };
-
-
-    // Use settings defined above to initialize SD card and mount FAT filesystem.
-    // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
-    // Please check its source code and implement error recovery when developing
-    // production applications.
-    sdmmc_card_t* card;
-   //esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/_#!#_sdcard", &host, &slot_config, &mount_config, &card);
-
-    //printf('mound sd');
-    //printf(ret);
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Failed to mount filesystem. "
-                "If you want the card to be formatted, set format_if_mount_failed = true.");
-        } else {
-            ESP_LOGE(TAG, "Failed to initialize the card (%d). "
-                "Make sure SD card lines have pull-up resistors in place.", ret);
-        }
-        if (threaded_task==1) {
-     	   vTaskDelete(NULL);
-        }
-        return;
-    }
-
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, card);
-
-    // Use POSIX and C standard library functions to work with files.
-    // First create a file.
-    ESP_LOGI(TAG, "Opening file");
-    //FILE* f_c = fopen("/sdcard/communicator.txt", "w");
-    FILE* f_c = fopen("/_#!#_sdcard/communicator2.txt", "w");
-    if (f_c == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing");
-        if (threaded_task==1) {
-     	   vTaskDelete(NULL);
-        }
-        return;
-    }
-    fprintf(f_c, "If you found this, please write to NilsNoreyso@gmail.com\n");
-    fclose(f_c);
-    ESP_LOGI(TAG, "File written");
-   */
+   is_recording = 1;
    gpio_pad_select_gpio(GPIO_OUTPUT_IO_0);
    gpio_set_direction(GPIO_OUTPUT_IO_0, GPIO_MODE_OUTPUT);
    gpio_set_level(GPIO_OUTPUT_IO_0, 1);
    uint16_t buf_len = 1024;
-   //int *buf = calloc(buf_len, sizeof(int));
    char *buf = calloc(buf_len, sizeof(char));
 
    struct timeval tv = {0};
@@ -165,8 +95,6 @@ void task_record()
    uint64_t micros = tv.tv_usec + tv.tv_sec * 1000000;
    uint64_t micros_prev = micros;
    uint64_t delta = 0;
-
-   //init_i2s();
 
    int cnt = 0;
    int sec = 0;
@@ -180,24 +108,6 @@ void task_record()
     struct stat st;
 
     char file_name[32]; // The filename buffer.
-    /*
-    while (inc_filename==1){
-
-        snprintf(file_name, sizeof(char) * 32, "/sdcard/audio_%i.raw", file_count);
-
-	    if (stat(file_name, &st) == 0) {
-		printf("%s exists \n",file_name);
-		file_count += 1;
-	    }
-	    else{
-		printf("Writing to %s \n",file_name);
-		inc_filename=0;
-		}
-    }
-
-
-   FILE* f = fopen(file_name, "wb");
-   */
    FILE* f = fopen("/_#!#_sdcard/rec.raw", "wb");
 
    if (f == NULL) {
@@ -244,25 +154,18 @@ void task_record()
 
       cnt += samples_read;
 
-      //fprintf(f, "%.*s", bytes_read, buf);
-	  //fprintf(f, "%s",buf);
-	  //bytes_written  = fwrite(buf , sizeof(char), sizeof(buf) , f );
 	  bytes_written  = fwrite(buf , sizeof(char), bytes_2_write , f );
 
 
 
 
       if(cnt >= 44100) {
-		 //printf("%d\n",bytes_read);
-		 //printf("%d\n",bytes_written);
 		 sec+=1;
          gettimeofday(&tv, &tz);
          micros = tv.tv_usec + tv.tv_sec * 1000000;
          delta = micros - micros_prev;
          micros_prev = micros;
          printf("%d samples in %" PRIu64 " usecs\n", cnt, delta);
-         //printf("Do record %d\n",do_record);
-
          cnt = 0;
       }
    }
@@ -270,16 +173,13 @@ void task_record()
 
 
 
-   // All done, unmount partition and disable SDMMC or SPI peripheral
-   //esp_vfs_fat_sdmmc_unmount();
-   vTaskDelay(100 / portTICK_RATE_MS);
-   ESP_LOGI(TAG, "Card unmounted");
    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
    do_record=1;
+   is_recording = 0;
    if (threaded_task==1) {
 	   vTaskDelete(NULL);
    }
-   //return;
+   return;
 
 
 
@@ -297,8 +197,7 @@ STATIC mp_obj_t mymodule_record(void) {
     do_record=1;
     TaskHandle_t xHandle = NULL;
     if (threaded_task==1) {
-    	xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 25, &xHandle,0);
-    	//xTaskCreate(&task_record, "task_record", 16384, NULL, 20, &xHandle);
+    	xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 19, &xHandle,0);
     	configASSERT( xHandle );
     }
     else{
@@ -306,10 +205,11 @@ STATIC mp_obj_t mymodule_record(void) {
     }
 
 
-    //printf("Done\n");
+    printf("Done\n");
 
    return mp_const_none;
 }
+
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_record_obj, mymodule_record);
 
 /*
@@ -349,14 +249,19 @@ STATIC mp_obj_t mymodule_initi2s(void) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_initi2s_obj, mymodule_initi2s);
 
+STATIC mp_obj_t mymodule_isrecording(void) {
+	return MP_OBJ_NEW_SMALL_INT(is_recording);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_isrecording_obj, mymodule_isrecording);
 
 
 STATIC const mp_map_elem_t mymodule_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_mymodule) },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_hello), (mp_obj_t)&mymodule_record_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_record), (mp_obj_t)&mymodule_record_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&mymodule_stop_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_start), (mp_obj_t)&mymodule_start_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_initi2s), (mp_obj_t)&mymodule_initi2s_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_isrecording), (mp_obj_t)&mymodule_isrecording_obj },
 };
 
 
