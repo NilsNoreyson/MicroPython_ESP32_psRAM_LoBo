@@ -40,7 +40,7 @@
 #include "driver/gpio.h"
 
 
-#define GPIO_OUTPUT_IO_0 27
+#define GPIO_OUTPUT_IO_0 22
 
 int do_record = 1;
 int is_recording = 0;
@@ -85,7 +85,7 @@ void task_record()
    is_recording = 1;
    gpio_pad_select_gpio(GPIO_OUTPUT_IO_0);
    gpio_set_direction(GPIO_OUTPUT_IO_0, GPIO_MODE_OUTPUT);
-   gpio_set_level(GPIO_OUTPUT_IO_0, 1);
+   gpio_set_level(GPIO_OUTPUT_IO_0, 0);
    uint16_t buf_len = 1024;
    char *buf = calloc(buf_len, sizeof(char));
 
@@ -117,7 +117,7 @@ void task_record()
        printf(VFS_NATIVE_SDCARD_MOUNT_POINT);
 
        fclose(f);
-       gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+       gpio_set_level(GPIO_OUTPUT_IO_0, 1);
        do_record=1;
        if (threaded_task==1) {
     	   vTaskDelete(NULL);
@@ -173,7 +173,7 @@ void task_record()
 
 
 
-   gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+   gpio_set_level(GPIO_OUTPUT_IO_0, 1);
    do_record=1;
    is_recording = 0;
    if (threaded_task==1) {
