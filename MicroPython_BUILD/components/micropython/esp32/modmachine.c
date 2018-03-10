@@ -43,6 +43,7 @@
 #include "esp_deep_sleep.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_wifi.h"
 
 #include "py/obj.h"
 #include "py/runtime.h"
@@ -218,7 +219,7 @@ STATIC mp_obj_t machine_deepsleep(size_t n_args, const mp_obj_t *pos_args, mp_ma
     }
 
     prepareSleepReset(0, "ESP32: DEEP SLEEP\n");
-
+    esp_wifi_stop();
     esp_deep_sleep_start(); // This function does not return.
 
     return mp_const_none;
