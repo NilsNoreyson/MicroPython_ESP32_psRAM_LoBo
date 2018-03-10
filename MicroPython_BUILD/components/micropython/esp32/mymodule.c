@@ -126,7 +126,7 @@ void task_record()
 
    }
 
-   while((sec<15) && (do_record==1))
+   while((sec<120) && (do_record==1))
    {
       char *buf_ptr_read = buf;
       char *buf_ptr_write = buf;
