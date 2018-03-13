@@ -108,8 +108,12 @@ void task_record()
     struct stat st;
 
     char file_name[32]; // The filename buffer.
-   FILE* f = fopen("/_#!#_sdcard/rec.raw", "wb");
 
+   FILE* f = fopen("/_#!#_sdcard/rec.raw", "wb");
+   while (f==NULL){
+	   f = fopen("/_#!#_sdcard/rec.raw", "wb");
+	   vTaskDelay(100 / portTICK_RATE_MS);
+   }
    if (f == NULL) {
        ESP_LOGE(TAG, "Failed to open file for writing");
        ESP_LOGE(TAG,VFS_NATIVE_SDCARD_MOUNT_POINT);
@@ -126,7 +130,7 @@ void task_record()
 
    }
 
-   while((sec<120) && (do_record==1))
+   while((sec<58) && (do_record==1))
    {
       char *buf_ptr_read = buf;
       char *buf_ptr_write = buf;
@@ -197,8 +201,10 @@ STATIC mp_obj_t mymodule_record(void) {
     do_record=1;
     TaskHandle_t xHandle = NULL;
     if (threaded_task==1) {
-    	xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 19, &xHandle,0);
-    	configASSERT( xHandle );
+    	if (is_recording == 0){
+    		xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 20, &xHandle,0);
+    		//configASSERT( xHandle );
+    	}
     }
     else{
     	task_record();
