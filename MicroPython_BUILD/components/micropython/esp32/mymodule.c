@@ -37,6 +37,7 @@
 #include "sdmmc_cmd.h"
 #include <stdio.h>
 
+#include "esp_task_wdt.h"
 #include "driver/gpio.h"
 
 
@@ -142,7 +143,6 @@ void task_record()
       }
       uint32_t samples_read = bytes_read / 2 / (I2S_BITS_PER_SAMPLE_32BIT / 8);
       for(int i = 0; i < samples_read; i++) {
-
          // const char samp32[4] = {ptr_l[0], ptr_l[1], ptr_r[0], ptr_r[1]};
 
          // left
@@ -164,6 +164,7 @@ void task_record()
 
 
       if(cnt >= 44100) {
+   	     esp_task_wdt_reset();
 		 sec+=1;
          gettimeofday(&tv, &tz);
          micros = tv.tv_usec + tv.tv_sec * 1000000;
@@ -203,6 +204,8 @@ STATIC mp_obj_t mymodule_record(void) {
     if (threaded_task==1) {
     	if (is_recording == 0){
     		xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, 20, &xHandle,0);
+    		//xTaskCreatePinnedToCore(&task_record, "task_record", 16384, NULL, configMAX_PRIORITIES-2, &xHandle,0);
+
     		//configASSERT( xHandle );
     	}
     }
