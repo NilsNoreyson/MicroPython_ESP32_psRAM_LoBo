@@ -513,7 +513,7 @@ STATIC mp_obj_t machine_deepsleep(size_t n_args, const mp_obj_t *pos_args, mp_ma
     	}
 		esp_set_deep_sleep_wake_stub(&wake_stub);
     }
-
+    //esp_wifi_stop();
     esp_deep_sleep_start(); // This function does not return.
 
     return mp_const_none;
