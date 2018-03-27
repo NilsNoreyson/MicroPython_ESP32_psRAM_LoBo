@@ -39,13 +39,82 @@
 
 #include "esp_task_wdt.h"
 #include "driver/gpio.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
+
+#include "nvs_flash.h"
+#include "nvs.h"
 
 #define GPIO_OUTPUT_IO_0 22
 
 int do_record = 1;
 int is_recording = 0;
 int threaded_task = 1;
+
+
+int32_t get_and_increment_rec_count()
+{
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
+
+    // Open
+    printf("\n");
+    printf("Opening Non-Volatile Storage (NVS) handle... ");
+    nvs_handle my_handle;
+    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    } else {
+        printf("Done\n");
+
+        // Read
+        printf("Reading rec-counter from NVS ... ");
+        int32_t rec_counter = 0; // value will default to 0, if not set yet in NVS
+        err = nvs_get_i32(my_handle, "rec_counter", &rec_counter);
+        switch (err) {
+            case ESP_OK:
+                printf("Done\n");
+                printf("Rec counter = %d\n", rec_counter);
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                printf("The value is not initialized yet!\n");
+                break;
+            default :
+                printf("Error (%s) reading!\n", esp_err_to_name(err));
+        }
+
+        // Write
+        printf("Updating rec counter in NVS ... ");
+        rec_counter++;
+        err = nvs_set_i32(my_handle, "rec_counter", rec_counter);
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        // Commit written value.
+        // After setting any values, nvs_commit() must be called to ensure changes are written
+        // to flash storage. Implementations may write to storage at other times,
+        // but this is not guaranteed.
+        printf("Committing updates in NVS ... ");
+        err = nvs_commit(my_handle);
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        // Close
+        nvs_close(my_handle);
+        return rec_counter;
+    }
+    return 0;
+}
+
+
+
+
 
 static void init_i2s()
 {
@@ -94,6 +163,7 @@ void task_record()
    struct timezone *tz = {0};
    gettimeofday(&tv, &tz);
    uint64_t micros = tv.tv_usec + tv.tv_sec * 1000000;
+   uint32_t secs = (uint32_t)(tv.tv_sec);
    uint64_t micros_prev = micros;
    uint64_t delta = 0;
 
@@ -109,10 +179,19 @@ void task_record()
     struct stat st;
 
     char file_name[32]; // The filename buffer.
+    int32_t rec_counter = get_and_increment_rec_count();
+    printf("%d is new rec count\n", rec_counter);
 
-   FILE* f = fopen("/_#!#_sdcard/rec.raw", "wb");
+
+    char buffer[32]; // The filename buffer.
+    // Put "file" then k then ".txt" in to filename.
+    snprintf(buffer, sizeof(char) * 64, "/_#!#_sdcard/rec_%i_%i.raw", rec_counter,secs);
+    printf(buffer);
+    printf("\n");
+
+   FILE* f = fopen(buffer, "wb");
    while (f==NULL){
-	   f = fopen("/_#!#_sdcard/rec.raw", "wb");
+	   f = fopen(buffer, "wb");
 	   vTaskDelay(100 / portTICK_RATE_MS);
    }
    if (f == NULL) {
