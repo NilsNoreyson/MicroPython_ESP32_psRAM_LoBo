@@ -36,6 +36,7 @@
 #include "driver/sdspi_host.h"
 #include "sdmmc_cmd.h"
 #include <stdio.h>
+#include "esp_wifi.h"
 
 #include "esp_task_wdt.h"
 #include "driver/gpio.h"
@@ -317,6 +318,13 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_record_obj, mymodule_record);
 		sleep(1);
  */
 
+STATIC mp_obj_t mymodule_wifistop(void) {
+	esp_wifi_stop();
+	return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_wifistop_obj, mymodule_wifistop);
+
+//
 
 
 STATIC mp_obj_t mymodule_stop(void) {
@@ -350,6 +358,7 @@ STATIC const mp_map_elem_t mymodule_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_start), (mp_obj_t)&mymodule_start_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_initi2s), (mp_obj_t)&mymodule_initi2s_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_isrecording), (mp_obj_t)&mymodule_isrecording_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_wifistop), (mp_obj_t)&mymodule_wifistop_obj },
 };
 
 
