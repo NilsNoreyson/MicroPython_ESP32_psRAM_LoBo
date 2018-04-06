@@ -490,7 +490,7 @@ STATIC mp_obj_t native_vfs_getcwd(mp_obj_t vfs_in) {
 		return mp_const_none;
 	}
 
-	return mp_obj_new_str(buf, strlen(buf), false);
+	return mp_obj_new_str(buf, strlen(buf));
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(native_vfs_getcwd_obj, native_vfs_getcwd);
 
@@ -509,7 +509,7 @@ STATIC mp_obj_t native_vfs_getdrive() {
 		else sprintf(drive, "/");
 	}
 
-	return mp_obj_new_str(drive, strlen(drive), false);
+	return mp_obj_new_str(drive, strlen(drive));
 }
 MP_DEFINE_CONST_FUN_OBJ_0(native_vfs_getdrive_obj, native_vfs_getdrive);
 
@@ -748,7 +748,7 @@ static void _sdcard_mount()
 	else {
 		sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 		sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-		if (sdcard_config.mode == 1) {
+		if (sdcard_config.mode == 2) {
 	        // Use 1-line SD mode
 		    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);
 		    gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
@@ -1003,7 +1003,7 @@ int mount_vfs(int type, char *chdir_to)
 
     // mount flash file system
     args2[0] = vfso;
-    args2[1] = mp_obj_new_str(mp, strlen(mp), false);
+    args2[1] = mp_obj_new_str(mp, strlen(mp));
     mp_call_function_n_kw(MP_OBJ_FROM_PTR(&mp_vfs_mount_obj), 2, 0, args2);
 
     if (native_vfs_mounted[type]) {

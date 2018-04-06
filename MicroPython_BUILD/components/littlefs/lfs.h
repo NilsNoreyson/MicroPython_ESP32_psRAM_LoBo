@@ -2,6 +2,7 @@
  * The little filesystem
  *
  * Copyright (c) 2017 ARM Limited
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,14 +28,14 @@
 // Software library version
 // Major (top-nibble), incremented on backwards incompatible changes
 // Minor (bottom-nibble), incremented on feature additions
-#define LFS_VERSION 0x00010003
+#define LFS_VERSION 0x00010004
 #define LFS_VERSION_MAJOR (0xffff & (LFS_VERSION >> 16))
 #define LFS_VERSION_MINOR (0xffff & (LFS_VERSION >>  0))
 
 // Version of On-disk data structures
 // Major (top-nibble), incremented on backwards incompatible changes
 // Minor (bottom-nibble), incremented on feature additions
-#define LFS_DISK_VERSION 0x00010001
+#define LFS_DISK_VERSION 0x00010002
 #define LFS_DISK_VERSION_MAJOR (0xffff & (LFS_DISK_VERSION >> 16))
 #define LFS_DISK_VERSION_MINOR (0xffff & (LFS_DISK_VERSION >>  0))
 
@@ -483,5 +484,12 @@ int lfs_traverse(lfs_t *lfs, int (*cb)(void*, lfs_block_t), void *data);
 // Returns a negative error code on failure.
 int lfs_deorphan(lfs_t *lfs);
 
+
+// setup free lookahead
+void lfs_setup_free(lfs_t *lfs);
+
+// Find the first free (unused) block
+// return its number in *block
+int lfs_alloc(lfs_t *lfs, lfs_block_t *block);
 
 #endif

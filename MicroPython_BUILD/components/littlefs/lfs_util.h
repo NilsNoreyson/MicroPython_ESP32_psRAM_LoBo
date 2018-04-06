@@ -46,7 +46,7 @@
 #include <stdio.h>
 #endif
 
-#define TAG	"lfs.c"
+#define LFS_TAG	"lfs.c"
 
 // Macros, may be replaced by system specific wrappers. Arguments to these
 // macros must not have side-effects as the macros can be removed for a smaller
@@ -55,21 +55,21 @@
 // Logging functions
 #ifndef LFS_NO_DEBUG
 #define LFS_DEBUG(fmt, ...) \
-    ESP_LOGD(TAG, "%d: " fmt, __LINE__, __VA_ARGS__)
+    ESP_LOGD(LFS_TAG, "%d: " fmt, __LINE__, __VA_ARGS__)
 #else
 #define LFS_DEBUG(fmt, ...)
 #endif
 
 #ifndef LFS_NO_WARN
 #define LFS_WARN(fmt, ...) \
-    ESP_LOGW(TAG, "%d: " fmt, __LINE__, __VA_ARGS__)
+    ESP_LOGW(LFS_TAG, "%d: " fmt, __LINE__, __VA_ARGS__)
 #else
 #define LFS_WARN(fmt, ...)
 #endif
 
 #ifndef LFS_NO_ERROR
 #define LFS_ERROR(fmt, ...) \
-    ESP_LOGE(TAG, "%d: " fmt, __LINE__, __VA_ARGS__)
+    ESP_LOGE(LFS_TAG, "%d: " fmt, __LINE__, __VA_ARGS__)
 #else
 #define LFS_ERROR(fmt, ...)
 #endif
