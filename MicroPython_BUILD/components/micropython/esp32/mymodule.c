@@ -52,7 +52,8 @@
 int do_record = 1;
 int is_recording = 0;
 int threaded_task = 1;
-
+i2s_bits_per_sample_t bits_per_sample = 32;
+int sample_rate = 16000;
 
 int32_t get_and_increment_rec_count()
 {
@@ -119,14 +120,12 @@ int32_t get_and_increment_rec_count()
 
 static void init_i2s()
 {
-   const int sample_rate = 44100;
-
 
     /* RX: I2S_NUM_1 */
     i2s_config_t i2s_config_rx = {
    .mode = I2S_MODE_MASTER | I2S_MODE_RX, // Only TX
    .sample_rate = sample_rate,
-   .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,    // Only 8-bit DAC support
+   .bits_per_sample = bits_per_sample,    // Only 8-bit DAC support
    .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,   // 2-channels
    .communication_format = I2S_COMM_FORMAT_I2S_MSB,
    .dma_buf_count = 32,                            // number of buffers, 128 max.
@@ -221,7 +220,7 @@ void task_record()
       while(bytes_read == 0) {
          bytes_read = i2s_read_bytes(I2S_NUM_0, buf, buf_len, 0);
       }
-      uint32_t samples_read = bytes_read / 2 / (I2S_BITS_PER_SAMPLE_32BIT / 8);
+      uint32_t samples_read = bytes_read / 2 / (bits_per_sample / 8);
       for(int i = 0; i < samples_read; i++) {
          // const char samp32[4] = {ptr_l[0], ptr_l[1], ptr_r[0], ptr_r[1]};
 
@@ -230,7 +229,7 @@ void task_record()
          buf_ptr_write[1] = buf_ptr_read[3]; // high
 
          buf_ptr_write += (I2S_BITS_PER_SAMPLE_16BIT / 8);
-         buf_ptr_read += 2 * (I2S_BITS_PER_SAMPLE_32BIT / 8);
+         buf_ptr_read += 2 * (bits_per_sample / 8);
       }
 
       // local echo
@@ -243,7 +242,7 @@ void task_record()
 
 
 
-      if(cnt >= 44100) {
+      if(cnt >= sample_rate) {
    	     esp_task_wdt_reset();
 		 sec+=1;
          gettimeofday(&tv, &tz);
