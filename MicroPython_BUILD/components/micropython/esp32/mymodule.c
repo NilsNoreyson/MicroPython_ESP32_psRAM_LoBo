@@ -128,7 +128,7 @@ static void init_i2s()
    .bits_per_sample = bits_per_sample,    // Only 8-bit DAC support
    .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,   // 2-channels
    .communication_format = I2S_COMM_FORMAT_I2S_MSB,
-   .dma_buf_count = 32,                            // number of buffers, 128 max.
+   .dma_buf_count = 64,                            // number of buffers, 128 max.
    .dma_buf_len = 32 * 2,                          // size of each buffer
    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1        // Interrupt level 1
    };
@@ -156,7 +156,7 @@ void task_record()
    gpio_pad_select_gpio(GPIO_OUTPUT_IO_0);
    gpio_set_direction(GPIO_OUTPUT_IO_0, GPIO_MODE_OUTPUT);
    gpio_set_level(GPIO_OUTPUT_IO_0, 0);
-   uint16_t buf_len = 1024;
+   uint16_t buf_len = 2048;
    char *buf = calloc(buf_len, sizeof(char));
 
    struct timeval tv = {0};
@@ -218,7 +218,7 @@ void task_record()
       // read whole block of samples
       int bytes_read = 0;
       while(bytes_read == 0) {
-         bytes_read = i2s_read_bytes(I2S_NUM_0, buf, buf_len, 0);
+         bytes_read = i2s_read_bytes(I2S_NUM_0, buf, buf_len, 2048);
       }
       uint32_t samples_read = bytes_read / 2 / (bits_per_sample / 8);
       for(int i = 0; i < samples_read; i++) {
@@ -236,7 +236,6 @@ void task_record()
       bytes_2_write = samples_read * (I2S_BITS_PER_SAMPLE_16BIT / 8);
 
       cnt += samples_read;
-
 	  bytes_written  = fwrite(buf , sizeof(char), bytes_2_write , f );
 
 
@@ -249,7 +248,7 @@ void task_record()
          micros = tv.tv_usec + tv.tv_sec * 1000000;
          delta = micros - micros_prev;
          micros_prev = micros;
-         printf("%d samples in %" PRIu64 " usecs\n", cnt, delta);
+         printf("%d samples in %" PRIu64 " usecs - last %d bytes written, last read %d\n", cnt, delta,bytes_2_write,bytes_read);
          cnt = 0;
       }
    }
@@ -349,6 +348,12 @@ STATIC mp_obj_t mymodule_isrecording(void) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_isrecording_obj, mymodule_isrecording);
 
+STATIC mp_obj_t mymodule_setSamplerate(mp_obj_t set_sample_rate) {
+    sample_rate =  mp_obj_get_int(set_sample_rate);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(mymodule_setSamplerate_obj, mymodule_setSamplerate);
+
 
 STATIC const mp_map_elem_t mymodule_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_mymodule) },
@@ -358,6 +363,7 @@ STATIC const mp_map_elem_t mymodule_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_initi2s), (mp_obj_t)&mymodule_initi2s_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_isrecording), (mp_obj_t)&mymodule_isrecording_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_wifistop), (mp_obj_t)&mymodule_wifistop_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_setSamplerate), (mp_obj_t)&mymodule_setSamplerate_obj },
 };
 
 
