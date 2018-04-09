@@ -343,6 +343,12 @@ STATIC mp_obj_t mymodule_initi2s(void) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_initi2s_obj, mymodule_initi2s);
 
+STATIC mp_obj_t mymodule_deiniti2s(void) {
+	i2s_driver_uninstall(I2S_NUM_0);
+	return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mymodule_deiniti2s_obj, mymodule_deiniti2s);
+
 STATIC mp_obj_t mymodule_isrecording(void) {
 	return MP_OBJ_NEW_SMALL_INT(is_recording);
 }
@@ -355,12 +361,17 @@ STATIC mp_obj_t mymodule_setSamplerate(mp_obj_t set_sample_rate) {
 MP_DEFINE_CONST_FUN_OBJ_1(mymodule_setSamplerate_obj, mymodule_setSamplerate);
 
 
+
+
+
+
 STATIC const mp_map_elem_t mymodule_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_mymodule) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_record), (mp_obj_t)&mymodule_record_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&mymodule_stop_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_start), (mp_obj_t)&mymodule_start_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_initi2s), (mp_obj_t)&mymodule_initi2s_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_deiniti2s), (mp_obj_t)&mymodule_deiniti2s_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_isrecording), (mp_obj_t)&mymodule_isrecording_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_wifistop), (mp_obj_t)&mymodule_wifistop_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_setSamplerate), (mp_obj_t)&mymodule_setSamplerate_obj },
