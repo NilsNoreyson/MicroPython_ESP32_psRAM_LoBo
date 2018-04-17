@@ -55,6 +55,113 @@ int threaded_task = 1;
 i2s_bits_per_sample_t bits_per_sample = 32;
 int sample_rate = 16000;
 
+
+//ulp stuff
+#include <stdio.h>
+#include "esp_sleep.h"
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "soc/rtc_cntl_reg.h"
+#include "soc/sens_reg.h"
+#include "driver/gpio.h"
+#include "driver/rtc_io.h"
+#include "esp32/ulp.h"
+#include "main/ulp_main.h"
+
+extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
+extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
+
+static void init_ulp_program();
+
+void count_pulses()
+{
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+
+    if (cause != ESP_SLEEP_WAKEUP_ULP) {
+        printf("Not ULP wakeup, initializing ULP\n");
+        //init_ulp_program();
+    } else {
+        printf("ULP wakeup, saving pulse count\n");
+    }
+
+
+
+    uint32_t pulse_count_from_ulp_old = -1;
+    while(1) {
+	    uint32_t pulse_count_from_ulp = (ulp_edge_count & UINT16_MAX) / 2;
+	    /* In case of an odd number of edges, keep one until next time */
+
+
+            if (pulse_count_from_ulp_old == pulse_count_from_ulp) {
+	        ulp_edge_count = ulp_edge_count % 2;
+
+	        printf("Pulse count from ULP: %5d\n", pulse_count_from_ulp);
+		break;
+
+
+
+	    }
+	    else {
+            pulse_count_from_ulp_old = pulse_count_from_ulp;
+            }
+
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    }
+	//printf("Entering deep sleep\n\n");
+	//ESP_ERROR_CHECK( esp_sleep_enable_ulp_wakeup() );
+	//esp_deep_sleep_start();
+
+}
+
+static void init_ulp_program()
+{
+    esp_err_t err = ulp_load_binary(0, ulp_main_bin_start,
+            (ulp_main_bin_end - ulp_main_bin_start) / sizeof(uint32_t));
+    ESP_ERROR_CHECK(err);
+
+    /* Initialize some variables used by ULP program.
+     * Each 'ulp_xyz' variable corresponds to 'xyz' variable in the ULP program.
+     * These variables are declared in an auto generated header file,
+     * 'ulp_main.h', name of this file is defined in component.mk as ULP_APP_NAME.
+     * These variables are located in RTC_SLOW_MEM and can be accessed both by the
+     * ULP and the main CPUs.
+     *
+     * Note that the ULP reads only the lower 16 bits of these variables.
+     */
+    ulp_debounce_counter = 3;
+    ulp_debounce_max_count = 3;
+    ulp_next_edge = 0;
+    ulp_io_number = 11; /* GPIO0 is RTC_IO 11 */
+    ulp_edge_count_to_wake_up = 2;
+
+    /* Initialize GPIO0 as RTC IO, input, disable pullup and pulldown */
+    gpio_num_t gpio_num = GPIO_NUM_0;
+    rtc_gpio_set_direction(gpio_num, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pulldown_dis(gpio_num);
+    rtc_gpio_pullup_dis(gpio_num);
+    rtc_gpio_hold_en(gpio_num);
+
+    /* Disconnect GPIO12 and GPIO15 to remove current drain through
+     * pullup/pulldown resistors.
+     * GPIO15 may be connected to ground to suppress boot messages.
+     * GPIO12 may be pulled high to select flash voltage.
+     */
+    rtc_gpio_isolate(GPIO_NUM_12);
+    rtc_gpio_isolate(GPIO_NUM_15);
+
+    /* Set ULP wake up period to T = 20ms (3095 cycles of RTC_SLOW_CLK clock).
+     * Minimum pulse width has to be T * (ulp_debounce_counter + 1) = 80ms.
+     */
+    REG_SET_FIELD(SENS_ULP_CP_SLEEP_CYC0_REG, SENS_SLEEP_CYCLES_S0, 3095);
+
+    /* Start the program */
+    err = ulp_run((&ulp_entry - RTC_SLOW_MEM) / sizeof(uint32_t));
+    ESP_ERROR_CHECK(err);
+}
+
+
+
 int32_t get_and_increment_rec_count()
 {
     // Initialize NVS
@@ -114,8 +221,12 @@ int32_t get_and_increment_rec_count()
     return 0;
 }
 
-
-
+static void enter_ulp_deepsleep()
+{
+	printf("Entering deep sleep\n\n");
+	ESP_ERROR_CHECK( esp_sleep_enable_ulp_wakeup() );
+	esp_deep_sleep_start();
+}
 
 
 static void init_i2s()
@@ -360,9 +471,26 @@ STATIC mp_obj_t mymodule_setSamplerate(mp_obj_t set_sample_rate) {
 }
 MP_DEFINE_CONST_FUN_OBJ_1(mymodule_setSamplerate_obj, mymodule_setSamplerate);
 
+STATIC mp_obj_t mymodule_countPulses(void) {
+    count_pulses();
+    return mp_const_none;
+
+}
+MP_DEFINE_CONST_FUN_OBJ_0(mymodule_countPulses_obj, mymodule_countPulses);
+
+STATIC mp_obj_t mymodule_initULP(void) {
+	init_ulp_program();
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(mymodule_initULP_obj, mymodule_initULP);
 
 
 
+STATIC mp_obj_t mymodule_ULPDeepSleep(void) {
+	enter_ulp_deepsleep();
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(mymodule_ULPDeepSleep_obj, mymodule_ULPDeepSleep);
 
 
 STATIC const mp_map_elem_t mymodule_globals_table[] = {
@@ -375,6 +503,9 @@ STATIC const mp_map_elem_t mymodule_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_isrecording), (mp_obj_t)&mymodule_isrecording_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_wifistop), (mp_obj_t)&mymodule_wifistop_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_setSamplerate), (mp_obj_t)&mymodule_setSamplerate_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_countPulses), (mp_obj_t)&mymodule_countPulses_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_initULP), (mp_obj_t)&mymodule_initULP_obj },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_ULPDeepSleep), (mp_obj_t)&mymodule_ULPDeepSleep_obj},
 };
 
 
