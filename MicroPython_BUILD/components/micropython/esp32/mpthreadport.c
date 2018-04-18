@@ -63,6 +63,7 @@ extern TaskHandle_t FtpTaskHandle;
 extern int MainTaskCore;
 
 TaskHandle_t MainTaskHandle = NULL;
+TaskHandle_t ReplTaskHandle = NULL;
 
 uint8_t main_accept_msg = 1;
 
@@ -200,7 +201,13 @@ STATIC void freertos_entry(void *arg) {
 //------------------------------------------------------------------------------------------------------------------------------
 TaskHandle_t mp_thread_create_ex(void *(*entry)(void*), void *arg, size_t *stack_size, int priority, char *name, bool same_core)
 {
-    // store thread entry function into a global variable so we can access it
+	bool is_repl = (strcmp(name, "REPLthread") == 0);
+	if (is_repl) {
+		if (ReplTaskHandle) {
+	        nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "REPL thread already started"));
+		}
+	}
+	// store thread entry function into a global variable so we can access it
     ext_thread_entry = entry;
 
     // Check thread stack size
@@ -247,6 +254,7 @@ TaskHandle_t mp_thread_create_ex(void *(*entry)(void*), void *arg, size_t *stack
         nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "can't create thread"));
     }
 
+	if (is_repl) ReplTaskHandle = id;
     // adjust the stack_size to provide room to recover from hitting the limit
     //*stack_size -= 1024;
 
@@ -265,7 +273,8 @@ TaskHandle_t mp_thread_create_ex(void *(*entry)(void*), void *arg, size_t *stack
     th->waiting = 0;
     th->deleted = 0;
     th->notifyed = 0;
-    th->type = THREAD_TYPE_PYTHON;
+    if (is_repl) th->type = THREAD_TYPE_REPL;
+    else th->type = THREAD_TYPE_PYTHON;
     thread = th;
 
     mp_thread_mutex_unlock(&thread_mutex);
@@ -282,9 +291,9 @@ STATIC void mp_clean_thread(thread_t *th)
 {
 	if (th->threadQueue) {
 		int n = 1;
-		while (n) {
+		while (n > 0) {
 			n = uxQueueMessagesWaiting(th->threadQueue);
-			if (n) {
+			if (n > 0) {
 				thread_msg_t msg;
 				xQueueReceive(th->threadQueue, &msg, 0);
 				if (msg.strdata != NULL) free(msg.strdata);
@@ -322,24 +331,6 @@ int mp_thread_mutex_lock(mp_thread_mutex_t *mutex, int wait) {
 //-----------------------------------------------------
 void mp_thread_mutex_unlock(mp_thread_mutex_t *mutex) {
     xSemaphoreGive(mutex->handle);
-}
-
-// Terminate all Python threads
-// used before entering sleep/reset
-//---------------------------
-void mp_thread_deinit(void) {
-    mp_thread_mutex_lock(&thread_mutex, 1);
-    for (thread_t *th = thread; th != NULL; th = th->next) {
-        // don't delete the current task
-        if (th->id == xTaskGetCurrentTaskHandle()) {
-            continue;
-        }
-    	mp_clean_thread(th);
-        vTaskDelete(th->id);
-    }
-    mp_thread_mutex_unlock(&thread_mutex);
-    // allow FreeRTOS to clean-up the threads
-    vTaskDelay(2);
 }
 
 //--------------------------------------
@@ -443,6 +434,17 @@ int mp_thread_notify(TaskHandle_t id, uint32_t value) {
         }
     }
     if (id == 0) res = 1;
+    mp_thread_mutex_unlock(&thread_mutex);
+    return res;
+}
+
+//---------------------------
+int mp_thread_num_threads() {
+	int res = 0;
+    mp_thread_mutex_lock(&thread_mutex, 1);
+    for (thread_t *th = thread; th != NULL; th = th->next) {
+        if (th->id != xTaskGetCurrentTaskHandle()) res++;
+    }
     mp_thread_mutex_unlock(&thread_mutex);
     return res;
 }
@@ -691,6 +693,23 @@ int mp_thread_replAcceptMsg(int8_t accept) {
     mp_thread_mutex_lock(&thread_mutex, 1);
     for (thread_t *th = thread; th != NULL; th = th->next) {
     	 if (th->id == xTaskGetCurrentTaskHandle()) {
+    		 if ((th->id == ReplTaskHandle) && (accept >= 0)) {
+    			 main_accept_msg = accept & 1;
+    		 }
+			 break;
+    	 }
+    }
+    mp_thread_mutex_unlock(&thread_mutex);
+
+    return res;
+}
+
+//------------------------------------------
+int mp_thread_mainAcceptMsg(int8_t accept) {
+	int res = main_accept_msg;
+    mp_thread_mutex_lock(&thread_mutex, 1);
+    for (thread_t *th = thread; th != NULL; th = th->next) {
+    	 if (th->id == xTaskGetCurrentTaskHandle()) {
     		 if ((th->id == MainTaskHandle) && (accept >= 0)) {
     			 main_accept_msg = accept & 1;
     		 }
@@ -707,25 +726,20 @@ int mp_thread_replAcceptMsg(int8_t accept) {
 
 #if defined(CONFIG_MICROPY_USE_TELNET) || defined(CONFIG_MICROPY_USE_FTPSERVER)
 // Check if WiFi connection is available
-//----------------------
-static int _check_wifi()
+//-----------------------
+static bool _check_wifi()
 {
-    tcpip_adapter_if_t if_type;
-    tcpip_adapter_ip_info_t info;
+    if (wifi_network_state < 2) return false;
+
+    bool res = 0;
     wifi_mode_t wifi_mode;
 
-    esp_wifi_get_mode(&wifi_mode);
-    if (wifi_mode == WIFI_MODE_AP) if_type = TCPIP_ADAPTER_IF_AP;
-    else if (wifi_mode == WIFI_MODE_STA) if_type = TCPIP_ADAPTER_IF_STA;
-    else return 2;
-
-    tcpip_adapter_get_ip_info(if_type, &info);
-    if (info.ip.addr == 0) return 0;
-
-    if ((wifi_mode == WIFI_MODE_STA) && ((!wifi_sta_isconnected) || (!wifi_sta_has_ipaddress))) return 0;
-    else if ((wifi_mode == WIFI_MODE_AP) && (!wifi_ap_isconnected)) return 0;
-
-    return 1;
+    esp_err_t ret = esp_wifi_get_mode(&wifi_mode);
+    if (ret == ESP_OK) {
+		if ((wifi_mode & WIFI_MODE_STA) && ((wifi_sta_isconnected) && (wifi_sta_has_ipaddress))) res = true;
+		if ((wifi_mode & WIFI_MODE_AP) && wifi_ap_isconnected) res = true;
+    }
+    return res;
 }
 #endif
 
@@ -733,45 +747,40 @@ static int _check_wifi()
 //===================================
 void telnet_task (void *pvParameters)
 {
-    int res;
     // Initialize telnet, create rx buffer and mutex
     telnet_init();
 
     // Check if WiFi connection is available
-    res = _check_wifi();
-    while ( res == 0) {
+    while (!_check_wifi()) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        res = _check_wifi();
+        if (telnet_stop_requested()) goto exit;
     }
-    if (res == 2) goto exit;
 
     // We have WiFi connection, enable telnet
     telnet_enable();
 
     while (1) {
-        res = telnet_run();
+        int res = telnet_run();
         if ( res < 0) {
             if (res == -1) {
                 ESP_LOGD("[Telnet]", "\nRun Error");
             }
+            // -2 is returned if Telnet stop was requested by user
             break;
         }
 
         vTaskDelay(1);
 
         // ---- Check if WiFi is still available ----
-        res = _check_wifi();
-        if (res == 0) {
+        if (!_check_wifi()) {
             bool was_enabled = telnet_isenabled();
             telnet_disable();
-            while ( res == 0) {
+            while (!_check_wifi()) {
                 vTaskDelay(200 / portTICK_PERIOD_MS);
-                res = _check_wifi();
-                if (res == 2) goto exit;
+                if (telnet_stop_requested()) goto exit;
             }
             if (was_enabled) telnet_enable();
         }
-        else if (res == 2) break;
         // ------------------------------------------
     }
 exit:
@@ -805,17 +814,14 @@ uintptr_t mp_thread_createTelnetTask(size_t stack_size)
 //================================
 void ftp_task (void *pvParameters)
 {
-    int res;
     uint64_t elapsed, time_ms = mp_hal_ticks_ms();
     // Initialize ftp, create rx buffer and mutex
     ftp_init();
 
-    res = _check_wifi();
-    while ( res == 0) {
+    while (!_check_wifi()) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        res = _check_wifi();
+        if (ftp_stop_requested()) goto exit;
     }
-    if (res == 2) goto exit;
 
     // We have WiFi connection, enable ftp
     ftp_enable();
@@ -825,29 +831,27 @@ void ftp_task (void *pvParameters)
         elapsed = mp_hal_ticks_ms() - time_ms;
         time_ms = mp_hal_ticks_ms();
 
-        res = ftp_run(elapsed);
+        int res = ftp_run(elapsed);
         if (res < 0) {
             if (res == -1) {
                 ESP_LOGD("[Ftp]", "\nRun Error");
             }
+            // -2 is returned if Ftp stop was requested by user
             break;
         }
 
         vTaskDelay(1);
 
         // ---- Check if WiFi is still available ----
-        res = _check_wifi();
-        if (res == 0) {
+        if (!_check_wifi()) {
             bool was_enabled = ftp_isenabled();
             ftp_disable();
-            while ( res == 0) {
+            while (!_check_wifi()) {
                 vTaskDelay(200 / portTICK_PERIOD_MS);
-                res = _check_wifi();
-                if (res == 2) goto exit;
+                if (ftp_stop_requested()) goto exit;
             }
             if (was_enabled) ftp_enable();
         }
-        else if (res == 2) break;
         // ------------------------------------------
     }
 exit:

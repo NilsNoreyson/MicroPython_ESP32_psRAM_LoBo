@@ -39,6 +39,7 @@
 #define THREAD_TYPE_MAIN		1
 #define THREAD_TYPE_PYTHON		2
 #define THREAD_TYPE_SERVICE		3
+#define THREAD_TYPE_REPL		3
 
 // Reserved thread notification constants
 #define THREAD_NOTIFY_PAUSE		0x01000000
@@ -112,14 +113,17 @@ typedef struct _thread_list_t {
     threadlistitem_t *threads;		// pointer to thread info
 } thread_list_t;
 
+extern TaskHandle_t MainTaskHandle;
+extern TaskHandle_t ReplTaskHandle;
+
 thread_msg_t thread_messages[MAX_THREAD_MESSAGES];
 
 uint8_t main_accept_msg;
 
 void mp_thread_preinit(void *stack, uint32_t stack_len);
 void mp_thread_init(void);
+int mp_thread_num_threads();
 void mp_thread_gc_others(void);
-void mp_thread_deinit(void);
 
 void mp_thread_allowsuspend(int allow);
 int mp_thread_suspend(TaskHandle_t id);
@@ -140,6 +144,7 @@ int mp_thread_getSelfname(char *name);
 int mp_thread_getname(TaskHandle_t id, char *name);
 int mp_thread_list(thread_list_t *list);
 int mp_thread_replAcceptMsg(int8_t accept);
+int mp_thread_mainAcceptMsg(int8_t accept);
 
 #ifdef CONFIG_MICROPY_USE_TELNET
 uintptr_t mp_thread_createTelnetTask(size_t stack_size);
