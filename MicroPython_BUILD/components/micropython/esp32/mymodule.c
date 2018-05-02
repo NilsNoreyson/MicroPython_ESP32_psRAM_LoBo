@@ -485,13 +485,15 @@ void count_pulses()
     uint32_t pulse_count_from_ulp_old = -1;
     while(1) {
 	    uint32_t pulse_count_from_ulp = (ulp_edge_count & UINT16_MAX) / 2;
+	    uint32_t touch_counter = ulp_touch_counter;
 	    /* In case of an odd number of edges, keep one until next time */
-
+	    printf("Touch from ULP: %5d\n", touch_counter);
 
             if (pulse_count_from_ulp_old == pulse_count_from_ulp) {
 	        ulp_edge_count = ulp_edge_count % 2;
 
 	        printf("Pulse count from ULP: %5d\n", pulse_count_from_ulp);
+
 		break;
 
 

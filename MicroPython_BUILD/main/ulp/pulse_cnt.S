@@ -25,6 +25,9 @@
 #include "soc/rtc_cntl_reg.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/soc_ulp.h"
+#include "soc/sens_reg.h"
+
+
 
 	/* Define variables, which go into .bss section (zero-initialized data) */
 	.bss
@@ -62,13 +65,48 @@ edge_count_to_wake_up:
 io_number:
 	.long 0
 
+	/* RTC IO number used to sample the input signal.
+	   Set by main program. */
+	.global touch_counter
+touch_counter:
+	.long 0
+
+
 	/* Code goes into .text section */
 	.text
 	.global entry
 entry:
+
+    /*
+    read the touchpad0 count value
+     0x3ff48800 + 0x0080 touchpad8 gpio33
+     machine.mem32[0x3ff48800+0x0080]&0x0000FFFF
+     Find all the beatiful register in:
+     https://github.com/espressif/esp-idf/blob/master/components/soc/esp32/include/soc/sens_reg.h
+
+     And register helper load functions
+     http://esp-idf.readthedocs.io/en/latest/api-guides/ulp_instruction_set.html#convenience-macros-for-peripheral-registers-access
+
+     p = machine.TouchPad(machine.Pin(33))
+
+    touch_counter machine.mem32[0x500000f8]
+    */
+
+
+    //READ_RTC_FIELD(SENS_SAR_TOUCH_OUT5_REG, SENS_TOUCH_MEAS_OUT8)
+    READ_RTC_REG(0x3ff48800+0x0080,0,32)
+    and r0, r0, 0x0000FFFF
+    move r2, touch_counter
+    st r0, r2, 0
+
+    JUMPR touched, 500, LT
+    JUMP pulsecheck
+
+pulsecheck:
 	/* Read the value of lower 16 RTC IOs into R0 */
 	READ_RTC_FIELD(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT)
 	/* Load io_number, extract the state of input */
+
 	move r3, io_number
 	ld r3, r3, 0
 	rsh r0, r0, r3
@@ -89,6 +127,12 @@ entry:
 	halt
 
 	.global changed
+
+touched:
+	wake
+	jump pulsecheck
+
+
 changed:
     wake
 	/* Input state changed */
