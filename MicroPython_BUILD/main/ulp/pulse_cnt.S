@@ -90,6 +90,7 @@ entry:
 
 	.global changed
 changed:
+    wake
 	/* Input state changed */
 	/* Has debounce_counter reached zero? */
 	move r3, debounce_counter
@@ -142,5 +143,5 @@ wake_up:
 	halt
 
 continue_count:
-        wake
+    wake
 	halt

@@ -63,6 +63,7 @@ typedef struct _machine_uart_obj_t {
     uint32_t *data_cb;
     uint32_t *pattern_cb;
     uint32_t *error_cb;
+    uint32_t inverted;
     uint8_t end_task;
     uint8_t lineend[3];
 } machine_uart_obj_t;
@@ -74,7 +75,8 @@ typedef struct _uart_ringbuf_t {
     uint16_t iput;
 } uart_ringbuf_t;
 
-STATIC const char *_parity_name[] = {"None", "1", "0"};
+static const char *_parity_name[] = {"None", "None", "Even", "Odd"};
+static const char *_stopbits_name[] = {"?", "1", "1.5", "2"};
 static QueueHandle_t UART_QUEUE[2] = {NULL};
 static QueueHandle_t uart_mutex = NULL;
 TaskHandle_t task_id[2] = {NULL};
@@ -148,10 +150,10 @@ static void _sched_callback(mp_obj_t function, int uart, int type, int iarglen, 
 	if (!make_carg_entry(carg, 0, MP_SCHED_ENTRY_TYPE_INT, uart, NULL, NULL)) return;
 	if (!make_carg_entry(carg, 1, MP_SCHED_ENTRY_TYPE_INT, type, NULL, NULL)) return;
 	if (sarg) {
-		if (!make_carg_entry(carg, 2, MP_SCHED_ENTRY_TYPE_INT, iarglen, NULL, NULL)) return;
+		if (!make_carg_entry(carg, 2, MP_SCHED_ENTRY_TYPE_STR, iarglen, sarg, NULL)) return;
 	}
 	else {
-		if (!make_carg_entry(carg, 2, MP_SCHED_ENTRY_TYPE_STR, iarglen, sarg, NULL)) return;
+		if (!make_carg_entry(carg, 2, MP_SCHED_ENTRY_TYPE_INT, iarglen, NULL, NULL)) return;
 	}
 	mp_sched_schedule(function, mp_const_none, carg);
 }
@@ -280,13 +282,15 @@ static const mp_arg_t allowed_args[] = {
     { MP_QSTR_timeout,		MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1} },
     { MP_QSTR_buffer_size,	MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 512} },
     { MP_QSTR_lineend,		MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none} },
+    { MP_QSTR_inverted,		MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_int = -1} },
 };
 
-enum { ARG_baudrate, ARG_bits, ARG_parity, ARG_stop, ARG_tx, ARG_rx, ARG_rts, ARG_cts, ARG_timeout, ARG_buffer_size, ARG_lineend };
+enum { ARG_baudrate, ARG_bits, ARG_parity, ARG_stop, ARG_tx, ARG_rx, ARG_rts, ARG_cts, ARG_timeout, ARG_buffer_size, ARG_lineend, ARG_inverted };
 
 //-----------------------------------------------------------------------------------------------
 STATIC void machine_uart_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
     machine_uart_obj_t *self = MP_OBJ_TO_PTR(self_in);
+
     uint32_t baudrate;
     uart_get_baudrate(self->uart_num+1, &baudrate);
     char lnend[16] = {'\0'};
@@ -312,15 +316,38 @@ STATIC void machine_uart_print(const mp_print_t *print, mp_obj_t self_in, mp_pri
     		lnend_idx++;
     	}
     }
+    char inverted[24] = {'\0'};
+    if (self->inverted & (uint32_t)UART_INVERSE_RXD) {
+    	if (inverted[0] != '\0') strcat(inverted, ", ");
+    	strcat(inverted, "RX");
+    }
+    if (self->inverted & (uint32_t)UART_INVERSE_TXD) {
+    	if (inverted[0] != '\0') strcat(inverted, ", ");
+    	strcat(inverted, "TX");
+    }
+    if (self->inverted & (uint32_t)UART_INVERSE_CTS) {
+    	if (inverted[0] != '\0') strcat(inverted, ", ");
+    	strcat(inverted, "CTS");
+    }
+    if (self->inverted & (uint32_t)UART_INVERSE_RTS) {
+    	if (inverted[0] != '\0') strcat(inverted, ", ");
+    	strcat(inverted, "RTS");
+    }
 
-    mp_printf(print, "UART(%u, baudrate=%u, bits=%u, parity=%s, stop=%u, tx=%d, rx=%d, rts=%d, cts=%d, timeout=%u, buf_size=%u, lineend=b'%s')",
-        self->uart_num+1, baudrate, self->bits, _parity_name[self->parity],
-        self->stop, self->tx, self->rx, self->rts, self->cts, self->timeout, self->buffer_size, lnend);
+    mp_printf(print, "UART(%u, baudrate=%u, bits=%u, parity=%s, stop=%s, tx=%d, rx=%d, rts=%d, cts=%d, inverted: [%s]\n",
+        self->uart_num+1, baudrate, self->bits, _parity_name[self->parity], _stopbits_name[self->stop],
+		self->tx, self->rx, self->rts, self->cts, inverted);
+    mp_printf(print, "        timeout=%u, buf_size=%u, lineend=b'%s')",	self->timeout, self->buffer_size, lnend);
     if (self->data_cb) {
     	mp_printf(print, "\n     data CB: True, on len: %d", self->data_cb_size);
     }
     if (self->pattern_cb) {
-    	mp_printf(print, "\n     pattern CB: True, pattern: [%s]", self->pattern);
+    	char pattern[80] = {'\0'};
+    	for (int i=0; i<self->pattern_len; i++) {
+    		if ((self->pattern[i] >= 0x20) && (self->pattern[i] < 0x7f)) pattern[strlen(pattern)] = self->pattern[i];
+    		else sprintf(pattern+strlen(pattern), "\\x%02x", self->pattern[i]);
+    	}
+    	mp_printf(print, "\n     pattern CB: True, pattern: b'%s'", pattern);
     }
     if (self->error_cb) {
     	mp_printf(print, "\n     error CB: True");
@@ -338,18 +365,16 @@ STATIC void machine_uart_init_helper(machine_uart_obj_t *self, size_t n_args, co
     // wait for all data to be transmitted before changing settings
     uart_wait_tx_done(self->uart_num+1, pdMS_TO_TICKS(1000));
 
-    // set baudrate
+    // set baudrate if needed
     uint32_t baudrate = 115200;
     if (args[ARG_baudrate].u_int > 0) {
         uart_set_baudrate(self->uart_num+1, args[ARG_baudrate].u_int);
         uart_get_baudrate(self->uart_num+1, &baudrate);
     }
 
-    // set data bits
-    if ((args[ARG_bits].u_int >= 0) && (args[ARG_bits].u_int != self->bits)) {
+    // set data bits if needed
+    if ((args[ARG_bits].u_int > 0) && (args[ARG_bits].u_int != self->bits)) {
 		switch (args[ARG_bits].u_int) {
-			case 0:
-				break;
 			case 5:
 				uart_set_word_length(self->uart_num+1, UART_DATA_5_BITS);
 				self->bits = 5;
@@ -372,32 +397,31 @@ STATIC void machine_uart_init_helper(machine_uart_obj_t *self, size_t n_args, co
 		}
     }
 
-    // set parity
+    // set parity if needed
     if (args[ARG_parity].u_obj != MP_OBJ_NULL) {
         if (args[ARG_parity].u_obj == mp_const_none) {
         	if (self->parity != UART_PARITY_DISABLE) {
                 uart_set_parity(self->uart_num+1, UART_PARITY_DISABLE);
                 self->parity = UART_PARITY_DISABLE;
-        }
+        	}
         }
         else {
+        	// 0 -> odd; 1-> even parity
             mp_int_t parity = mp_obj_get_int(args[ARG_parity].u_obj);
-            if ((parity & 1) && (self->parity != UART_PARITY_ODD)) {
-                uart_set_parity(self->uart_num+1, UART_PARITY_ODD);
-                self->parity = UART_PARITY_ODD;
-            }
-            else if (self->parity != UART_PARITY_EVEN){
+            if ((parity & 1) && (self->parity != UART_PARITY_EVEN)) {
                 uart_set_parity(self->uart_num+1, UART_PARITY_EVEN);
                 self->parity = UART_PARITY_EVEN;
+            }
+            else if (self->parity != UART_PARITY_ODD){
+                uart_set_parity(self->uart_num+1, UART_PARITY_ODD);
+                self->parity = UART_PARITY_ODD;
             }
         }
     }
 
-    // set stop bits
-    if ((args[ARG_stop].u_int >= 0) && (args[ARG_stop].u_int != self->stop)) {
+    // set stop bits if needed
+    if ((args[ARG_stop].u_int > 0) && (args[ARG_stop].u_int != self->stop)) {
 		switch (args[ARG_stop].u_int) {
-			case 0:
-				break;
 			case 1:
 				uart_set_stop_bits(self->uart_num+1, UART_STOP_BITS_1);
 				self->stop = UART_STOP_BITS_1;
@@ -416,6 +440,12 @@ STATIC void machine_uart_init_helper(machine_uart_obj_t *self, size_t n_args, co
 		}
     }
 
+    // set inverted pins
+    if ((args[ARG_inverted].u_int > -1) && (args[ARG_inverted].u_int != self->inverted)) {
+    	self->inverted = args[ARG_inverted].u_int & (UART_INVERSE_RXD | UART_INVERSE_TXD | UART_INVERSE_RTS | UART_INVERSE_CTS);
+    	uart_set_line_inverse(self->uart_num+1, self->inverted);
+    }
+
     // set pins
     if (((self->tx == -2) && (args[ARG_tx].u_int == UART_PIN_NO_CHANGE)) ||	((self->rx == -2) && (args[ARG_rx].u_int == UART_PIN_NO_CHANGE))) {
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "Tx&Rx pins must be set: u=machine.UART(uart_num, tx=pin, rx=pin)"));
@@ -431,18 +461,32 @@ STATIC void machine_uart_init_helper(machine_uart_obj_t *self, size_t n_args, co
 
 		if (args[ARG_tx].u_int != UART_PIN_NO_CHANGE)  self->tx  = args[ARG_tx].u_int;
 		if (args[ARG_rx].u_int != UART_PIN_NO_CHANGE)  self->rx  = args[ARG_rx].u_int;
-		if (args[ARG_rts].u_int != UART_PIN_NO_CHANGE) self->rts = args[ARG_rts].u_int;
-		if (args[ARG_cts].u_int != UART_PIN_NO_CHANGE) self->cts = args[ARG_cts].u_int;
+		if ((self->rts != args[ARG_rts].u_int) || (self->cts != args[ARG_cts].u_int)) {
+			if (args[ARG_rts].u_int != UART_PIN_NO_CHANGE) self->rts = args[ARG_rts].u_int;
+			if (args[ARG_cts].u_int != UART_PIN_NO_CHANGE) self->cts = args[ARG_cts].u_int;
+			// set flow control
+			int fwc = 0;
+			if (self->rts >= 0) fwc |= UART_HW_FLOWCTRL_RTS;
+			if (self->cts >= 0) fwc |= UART_HW_FLOWCTRL_CTS;
+			// Only when UART_HW_FLOWCTRL_RTS is set, will the rx_thresh value be set.
+			uart_set_hw_flow_ctrl(self->uart_num+1, fwc, UART_FIFO_LEN / 4 * 3);
+		}
     }
 
     // set timeout
     if (args[ARG_timeout].u_int >= 0) self->timeout = args[ARG_timeout].u_int;
 
     // set line end
-    if (MP_OBJ_IS_STR(args[ARG_lineend].u_obj)) {
-    	size_t lnendlen;
-    	const char *lnend = mp_obj_str_get_data(args[ARG_lineend].u_obj, &lnendlen);
-    	if ((lnend) && (lnendlen > 0) && (lnendlen < 3)) sprintf((char *)self->lineend, "%s", lnend);
+    mp_buffer_info_t lnend_buff;
+	mp_obj_type_t *type = mp_obj_get_type(args[ARG_lineend].u_obj);
+	if (type->buffer_p.get_buffer != NULL) {
+		int ret = type->buffer_p.get_buffer(args[ARG_lineend].u_obj, &lnend_buff, MP_BUFFER_READ);
+		if (ret == 0) {
+			if ((lnend_buff.len > 0) && (lnend_buff.len < sizeof(self->lineend))) {
+				memset(self->lineend, 0, sizeof(self->lineend));
+				memcpy(self->lineend, lnend_buff.buf, lnend_buff.len);
+			}
+		}
 	}
 }
 
@@ -462,7 +506,7 @@ STATIC mp_obj_t machine_uart_make_new(const mp_obj_type_t *type, size_t n_args, 
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "UART(%d) is disabled (dedicated to REPL)", uart_num));
     }
 
-     // Defaults
+     // Set defaults parameters
     uart_config_t uartcfg = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -481,11 +525,12 @@ STATIC mp_obj_t machine_uart_make_new(const mp_obj_type_t *type, size_t n_args, 
     machine_uart_obj_t *self = m_new_obj(machine_uart_obj_t);
     self->base.type = &machine_uart_type;
     self->uart_num = uart_num-1;
-    self->bits = UART_DATA_8_BITS;
-    self->parity = UART_PARITY_DISABLE;
+    self->bits = 8;
+    self->parity = 0;
     self->stop = UART_STOP_BITS_1;
     self->rts = UART_PIN_NO_CHANGE;
     self->cts = UART_PIN_NO_CHANGE;
+    self->inverted = UART_INVERSE_DISABLE;
     self->timeout = 0;
     self->pattern[0] = 0;
     self->pattern_len = 0;
@@ -535,8 +580,7 @@ STATIC mp_obj_t machine_uart_make_new(const mp_obj_type_t *type, size_t n_args, 
 	// Remove any existing configuration
     uart_driver_delete(uart_num);
 
-    // init the peripheral
-    // Setup
+    // Initialize the peripheral with default parameters
     uart_param_config(uart_num, &uartcfg);
 
     // RX ring buffer size is set to UART_BUFF_SIZE (256), TX buffer is disabled.
@@ -686,8 +730,12 @@ STATIC mp_obj_t machine_uart_callback(size_t n_args, const mp_obj_t *pos_args, m
 	mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
+    int datalen = -1;
+    mp_buffer_info_t pattern_buff;
     int cbtype = args[ARG_type].u_int;
+
     if ((!MP_OBJ_IS_FUN(args[ARG_func].u_obj)) && (!MP_OBJ_IS_METH(args[ARG_func].u_obj))) {
+    	// CB function not given, disable callback
     	if (uart_mutex) xSemaphoreTake(uart_mutex, 200 / portTICK_PERIOD_MS);
         switch(cbtype) {
             case UART_CB_TYPE_DATA:
@@ -709,29 +757,43 @@ STATIC mp_obj_t machine_uart_callback(size_t n_args, const mp_obj_t *pos_args, m
         return mp_const_none;
     }
 
+    // Get callback parameters
+    switch(cbtype) {
+        case UART_CB_TYPE_DATA:
+            if ((args[ARG_datalen].u_int <= 0) || (args[ARG_datalen].u_int >= self->buffer_size)) {
+    			mp_raise_ValueError("invalid data length");
+            }
+            datalen = args[ARG_datalen].u_int;
+            break;
+        case UART_CB_TYPE_PATTERN:
+        	{
+        		bool has_pattern = false;
+				mp_obj_type_t *type = mp_obj_get_type(args[ARG_pattern].u_obj);
+				if (type->buffer_p.get_buffer != NULL) {
+					int ret = type->buffer_p.get_buffer(args[ARG_pattern].u_obj, &pattern_buff, MP_BUFFER_READ);
+					if (ret == 0) {
+						if ((pattern_buff.len > 0) && (pattern_buff.len <= sizeof(self->pattern))) has_pattern = true;
+					}
+				}
+				if (!has_pattern) {
+					mp_raise_ValueError("invalid pattern");
+				}
+        	}
+            break;
+        default:
+        	break;
+    }
 
-    int datalen = -1;
-    size_t patternlen = 0;
-    const char * pattern = NULL;
-
-    if (MP_OBJ_IS_STR(args[ARG_pattern].u_obj)) {
-    	pattern = mp_obj_str_get_data(args[ARG_pattern].u_obj, &patternlen);
-    	if (patternlen > sizeof(self->pattern)) patternlen = sizeof(self->pattern);
-	}
-
-    if ((args[ARG_datalen].u_int >= 0) && (args[ARG_datalen].u_int < self->buffer_size)) datalen = args[ARG_datalen].u_int;
-
+    // Set the callback
 	if (uart_mutex) xSemaphoreTake(uart_mutex, 200 / portTICK_PERIOD_MS);
     switch(cbtype) {
         case UART_CB_TYPE_DATA:
-    		if (datalen >= 0) self->data_cb_size = datalen;
+    		self->data_cb_size = datalen;
     		self->data_cb = args[ARG_func].u_obj;
             break;
         case UART_CB_TYPE_PATTERN:
-        	if (pattern) {
-        		memcpy(self->pattern, pattern, patternlen);
-        		self->pattern_len = patternlen;
-        	}
+			memcpy(self->pattern, pattern_buff.buf, pattern_buff.len);
+			self->pattern_len = pattern_buff.len;
     		self->pattern_cb = args[ARG_func].u_obj;
             break;
         case UART_CB_TYPE_ERROR:
@@ -746,6 +808,33 @@ STATIC mp_obj_t machine_uart_callback(size_t n_args, const mp_obj_t *pos_args, m
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(machine_uart_callback_obj, 2, machine_uart_callback);
 
+//---------------------------------------------------------------------------
+STATIC mp_obj_t machine_uart_write_break(size_t n_args, const mp_obj_t *args)
+{
+    machine_uart_obj_t *self = MP_OBJ_TO_PTR(args[0]);
+
+    mp_buffer_info_t bufinfo;
+    mp_get_buffer_raise(args[1], &bufinfo, MP_BUFFER_READ);
+
+    // break signal length
+    // unit: one BIT time at current_baudrate
+    int nbreak = nbreak = mp_obj_get_int_truncated(args[2]);
+    if ((nbreak < 1) || (nbreak > 255)) {
+		mp_raise_ValueError("values 1 - 255 are allowed");
+    }
+
+    int len = bufinfo.len;
+    if (n_args == 4) {
+    	len = mp_obj_get_int_truncated(args[3]);
+    	if ((len < 0) || (len > bufinfo.len)) len = bufinfo.len;;
+    }
+
+    int bytes_written = uart_write_bytes_with_break(self->uart_num+1, (const char*)bufinfo.buf, len, nbreak);
+
+    return MP_OBJ_NEW_SMALL_INT(bytes_written);
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(machine_uart_write_break_obj, 3, 4, machine_uart_write_break);
+
 
 //=================================================================
 STATIC const mp_rom_map_elem_t machine_uart_locals_dict_table[] = {
@@ -756,6 +845,7 @@ STATIC const mp_rom_map_elem_t machine_uart_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_readline),		MP_ROM_PTR(&mp_stream_unbuffered_readline_obj) },
     { MP_ROM_QSTR(MP_QSTR_readinto),		MP_ROM_PTR(&mp_stream_readinto_obj) },
     { MP_ROM_QSTR(MP_QSTR_write),			MP_ROM_PTR(&mp_stream_write_obj) },
+    { MP_ROM_QSTR(MP_QSTR_write_break),		MP_ROM_PTR(&machine_uart_write_break_obj) },
     { MP_ROM_QSTR(MP_QSTR_readln),			MP_ROM_PTR(&machine_uart_readln_obj) },
     { MP_ROM_QSTR(MP_QSTR_flush),			MP_ROM_PTR(&machine_uart_flush_obj) },
     { MP_ROM_QSTR(MP_QSTR_callback),		MP_ROM_PTR(&machine_uart_callback_obj) },
@@ -764,6 +854,12 @@ STATIC const mp_rom_map_elem_t machine_uart_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_CBTYPE_DATA),		MP_ROM_INT(UART_CB_TYPE_DATA) },
     { MP_ROM_QSTR(MP_QSTR_CBTYPE_PATTERN),	MP_ROM_INT(UART_CB_TYPE_PATTERN) },
     { MP_ROM_QSTR(MP_QSTR_CBTYPE_ERROR),	MP_ROM_INT(UART_CB_TYPE_ERROR) },
+
+	{ MP_ROM_QSTR(MP_QSTR_INV_RX),			MP_ROM_INT(UART_INVERSE_RXD >> 1) },
+	{ MP_ROM_QSTR(MP_QSTR_INV_TX),			MP_ROM_INT(UART_INVERSE_TXD >> 1) },
+	{ MP_ROM_QSTR(MP_QSTR_INV_CTS),			MP_ROM_INT(UART_INVERSE_CTS >> 1) },
+	{ MP_ROM_QSTR(MP_QSTR_INV_RTS),			MP_ROM_INT(UART_INVERSE_RTS >> 1) },
+	{ MP_ROM_QSTR(MP_QSTR_INV_NONE),		MP_ROM_INT(0) },
 };
 STATIC MP_DEFINE_CONST_DICT(machine_uart_locals_dict, machine_uart_locals_dict_table);
 

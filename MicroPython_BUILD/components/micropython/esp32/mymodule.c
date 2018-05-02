@@ -549,7 +549,8 @@ static void init_ulp_program()
     /* Set ULP wake up period to T = 20ms (3095 cycles of RTC_SLOW_CLK clock).
      * Minimum pulse width has to be T * (ulp_debounce_counter + 1) = 80ms.
      */
-    REG_SET_FIELD(SENS_ULP_CP_SLEEP_CYC0_REG, SENS_SLEEP_CYCLES_S0, 3095);
+    //REG_SET_FIELD(SENS_ULP_CP_SLEEP_CYC0_REG, SENS_SLEEP_CYCLES_S0, 3095);
+    REG_SET_FIELD(SENS_ULP_CP_SLEEP_CYC0_REG, SENS_SLEEP_CYCLES_S0, 1000);
 
     /* Start the program */
     err = ulp_run((&ulp_entry - RTC_SLOW_MEM) / sizeof(uint32_t));
