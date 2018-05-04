@@ -7,10 +7,7 @@
 COMPONENT_ADD_INCLUDEDIRS := .  genhdr py esp32 lib lib/utils lib/mp-readline extmod extmod/crypto-algorithms lib/netutils drivers/dht \
 							 lib/timeutils  lib/berkeley-db-1.xx/include lib/berkeley-db-1.xx/btree \
 							 lib/berkeley-db-1.xx/db lib/berkeley-db-1.xx/hash lib/berkeley-db-1.xx/man lib/berkeley-db-1.xx/mpool lib/berkeley-db-1.xx/recno \
-							 ../curl/include ../curl/lib ../zlib ../libssh2/include ../espmqtt/include
-ifdef CONFIG_MICROPY_USE_MAIL
-COMPONENT_ADD_INCLUDEDIRS += ../quickmail
-endif
+							 ../curl/include ../curl/lib ../zlib ../libssh2/include ../espmqtt/include ../littlefs
 
 COMPONENT_PRIV_INCLUDEDIRS := .  genhdr py esp32 lib
 
@@ -52,6 +49,7 @@ MP_EXTRA_INC += -I$(PROJECT_PATH)/components/curl/include
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/libssh2/include
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/zlib
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/espmqtt/include
+MP_EXTRA_INC += -I$(PROJECT_PATH)/components/littlefs
 MP_EXTRA_INC += -I$(COMPONENT_PATH)/py
 MP_EXTRA_INC += -I$(COMPONENT_PATH)/lib/mp-readline
 MP_EXTRA_INC += -I$(COMPONENT_PATH)/lib/netutils
@@ -103,8 +101,9 @@ MP_EXTRA_INC += -I$(ESPCOMP)/openssl/include
 MP_EXTRA_INC += -I$(ESPCOMP)/app_update/include
 MP_EXTRA_INC += -I$(ESPCOMP)/mdns/include
 
-ifdef CONFIG_MICROPY_USE_MAIL
-MP_EXTRA_INC += -I$(PROJECT_PATH)/components/quickmail
+ifdef CONFIG_MICROPY_USE_BLUETOOTH
+MP_EXTRA_INC += -I$(ESPCOMP)/bt/include
+MP_EXTRA_INC += -I$(ESPCOMP)/bt/bluedroid/api/include
 endif
 
 # CPP macro
@@ -203,6 +202,11 @@ ifdef CONFIG_MICROPY_USE_ETHERNET
 SRC_C += esp32/network_lan.c
 endif
 
+ifdef CONFIG_MICROPY_USE_BLUETOOTH
+SRC_C += esp32/bluetooth_le.c
+SRC_C += esp32/modbluetooth.c
+endif
+
 EXTMOD_SRC_C = $(addprefix extmod/,\
 	modbtree.c \
 	)
@@ -242,14 +246,15 @@ LIBS_SRC_C = $(addprefix esp32/libs/,\
 	ftp.c \
 	websrv.c \
 	libGSM.c \
+	curl_mail.c \
 	ow/owb_rmt.c \
 	ow/owb.c \
 	ow/ds18b20.c \
+	littleflash.c \
 	)
 
 ifdef CONFIG_MICROPY_USE_DISPLAY
 LIBS_SRC_C += \
-	esp32/libs/tft/spi_master_lobo.c \
 	esp32/libs/tft/tftspi.c \
 	esp32/libs/tft/tft.c \
 	esp32/libs/tft/comic24.c \

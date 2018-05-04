@@ -1,9 +1,9 @@
 /*
- * This file is part of the Micro Python project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,8 +28,6 @@
  * Originally created by SHA2017 Badge Team (https://github.com/SHA2017-badge/micropython-esp32)
  *
  * Modified by LoBo (https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo)
- *
- * Added support for SD Card and some changes to make it work (hopefully) better
  *
  */
 
@@ -64,10 +62,13 @@
 #include "lib/timeutils/timeutils.h"
 #include "sdkconfig.h"
 
+#if CONFIG_MICROPY_FILESYSTEM_TYPE == 2
+#include "libs/littleflash.h"
+#endif
 
 // esp32 partition configuration
 static esp_partition_t * fs_partition = NULL;
-#if !MICROPY_USE_SPIFFS
+#if CONFIG_MICROPY_FILESYSTEM_TYPE == 1
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
 #endif
 
@@ -103,6 +104,21 @@ STATIC const byte fresult_to_errno_table[20] = {
 #define mp_obj_native_vfs_t fs_user_mount_t
 
 STATIC const char *TAG = "vfs_native";
+
+sdcard_config_t sdcard_config = {
+		CONFIG_SDCARD_MODE,
+#if CONFIG_SDCARD_MODE == 1
+		CONFIG_SDCARD_CLK,
+		CONFIG_SDCARD_MOSI,
+		CONFIG_SDCARD_MISO,
+		CONFIG_SDCARD_CS
+#else
+		-1,
+		-1,
+		-1,
+		-1
+#endif
+};
 
 bool native_vfs_mounted[2] = {false, false};
 STATIC sdmmc_card_t *sdmmc_card;
@@ -474,9 +490,28 @@ STATIC mp_obj_t native_vfs_getcwd(mp_obj_t vfs_in) {
 		return mp_const_none;
 	}
 
-	return mp_obj_new_str(buf, strlen(buf), false);
+	return mp_obj_new_str(buf, strlen(buf));
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(native_vfs_getcwd_obj, native_vfs_getcwd);
+
+/// Get the current drive.
+//-------------------------------------
+STATIC mp_obj_t native_vfs_getdrive() {
+
+	char drive[32];
+
+	if (MP_STATE_VM(vfs_cur) == MP_VFS_ROOT) {
+		sprintf(drive, "/");
+    }
+	else {
+		if (strstr(cwd, VFS_NATIVE_MOUNT_POINT) != NULL) sprintf(drive, VFS_NATIVE_INTERNAL_MP);
+		else if (strstr(cwd, VFS_NATIVE_SDCARD_MOUNT_POINT) != NULL) sprintf(drive, VFS_NATIVE_EXTERNAL_MP);
+		else sprintf(drive, "/");
+	}
+
+	return mp_obj_new_str(drive, strlen(drive));
+}
+MP_DEFINE_CONST_FUN_OBJ_0(native_vfs_getdrive_obj, native_vfs_getdrive);
 
 /// \function stat(path)
 /// Get the status of a file or directory.
@@ -503,9 +538,9 @@ STATIC mp_obj_t native_vfs_stat(mp_obj_t vfs_in, mp_obj_t path_in) {
 		buf.st_ctime = buf.st_atime; // Jan 1, 2000
 		buf.st_mode = MP_S_IFDIR;
 		if (self->device == VFS_NATIVE_TYPE_SPIFLASH) {
-			#if MICROPY_USE_SPIFFS
+			#if CONFIG_MICROPY_FILESYSTEM_TYPE == 0
 			uint32_t total, used;
-		    esp_spiffs_info("internalfs", &total, &used);
+		    esp_spiffs_info(VFS_NATIVE_INTERNAL_PART_LABEL, &total, &used);
 			buf.st_size = total;
 			#else
 		    FRESULT res=0;
@@ -566,13 +601,19 @@ STATIC mp_obj_t native_vfs_statvfs(mp_obj_t vfs_in, mp_obj_t path_in) {
     DWORD fre_clust;
 
 	if (self->device == VFS_NATIVE_TYPE_SPIFLASH) {
-		#if MICROPY_USE_SPIFFS
+		#if CONFIG_MICROPY_FILESYSTEM_TYPE == 0
 		uint32_t total, used;
-		esp_spiffs_info("internalfs", &total, &used);
+		esp_spiffs_info(VFS_NATIVE_INTERNAL_PART_LABEL, &total, &used);
 		f_bsize = 256; //SPIFFS_LOG_PAGE_SIZE;
 		f_blocks = total / 256; //SPIFFS_LOG_PAGE_SIZE;
 		f_bfree = (total-used) / 256; //SPIFFS_LOG_PAGE_SIZE;
 		maxlfn = CONFIG_SPIFFS_OBJ_NAME_LEN;
+		#elif CONFIG_MICROPY_FILESYSTEM_TYPE == 2
+		maxlfn = LFS_NAME_MAX;
+		uint32_t used = littleFlash_getUsedBlocks();
+		f_bsize = littleFlash.lfs_cfg.block_size;
+		f_blocks = littleFlash.lfs_cfg.block_count;
+		f_bfree = f_blocks - used;
 		#else
 		res = f_getfree(VFS_NATIVE_MOUNT_POINT, &fre_clust, &fatfs);
 		goto is_fat;
@@ -580,7 +621,7 @@ STATIC mp_obj_t native_vfs_statvfs(mp_obj_t vfs_in, mp_obj_t path_in) {
 	}
 	else if (self->device == VFS_NATIVE_TYPE_SDCARD) {
 		res = f_getfree(VFS_NATIVE_SDCARD_MOUNT_POINT, &fre_clust, &fatfs);
-#if !MICROPY_USE_SPIFFS
+#if CONFIG_MICROPY_FILESYSTEM_TYPE == 1
 is_fat:
 #endif
 	    if (res != 0) {
@@ -671,60 +712,74 @@ STATIC void sdcard_print_info(const sdmmc_card_t* card, int mode)
     #endif
 }
 
+//--------------------------------------------------------------
+static void _setPins(int8_t p1, int8_t p2, int8_t p3, int8_t p4)
+{
+    if (p1 >= 0) {
+		gpio_pad_select_gpio(p1);
+		gpio_set_direction(p1, GPIO_MODE_INPUT);
+		gpio_set_pull_mode(p1, GPIO_PULLUP_ONLY);
+    }
+    if (p2 >= 0) {
+		gpio_pad_select_gpio(p2);
+		gpio_set_direction(p2, GPIO_MODE_INPUT);
+		gpio_set_pull_mode(p2, GPIO_PULLUP_ONLY);
+    }
+    if (p3 >= 0) {
+		gpio_pad_select_gpio(p3);
+		gpio_set_direction(p3, GPIO_MODE_INPUT);
+		gpio_set_pull_mode(p3, GPIO_PULLUP_ONLY);
+    }
+    if (p4 >= 0) {
+		gpio_pad_select_gpio(p4);
+		gpio_set_direction(p4, GPIO_MODE_INPUT);
+		gpio_set_pull_mode(p4, GPIO_PULLUP_ONLY);
+    }
+}
+
 //-------------------------
 static void _sdcard_mount()
 {
-    mp_int_t card_mode = 3;
-
-    // Configure sdmmc interface
-	#if defined(CONFIG_SDCARD_MODE1)
-    	// Use SPI SD mode
-		sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-		sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-		//host.slot = VSPI_HOST;
-	    gpio_pad_select_gpio(CONFIG_SDCARD_MISO);
-	    gpio_pad_select_gpio(CONFIG_SDCARD_MOSI);
-	    gpio_pad_select_gpio(CONFIG_SDCARD_CLK);
-	    gpio_pad_select_gpio(CONFIG_SDCARD_CS);
-	    gpio_set_direction(CONFIG_SDCARD_MISO, GPIO_MODE_INPUT);
-	    gpio_set_pull_mode(CONFIG_SDCARD_MISO, GPIO_PULLUP_ONLY);
-	    gpio_set_pull_mode(CONFIG_SDCARD_CLK, GPIO_PULLUP_ONLY);
-	    gpio_set_pull_mode(CONFIG_SDCARD_MOSI, GPIO_PULLUP_ONLY);
-	    gpio_set_pull_mode(CONFIG_SDCARD_CS, GPIO_PULLUP_ONLY);
-	    slot_config.gpio_miso = CONFIG_SDCARD_MISO;
-	    slot_config.gpio_mosi = CONFIG_SDCARD_MOSI;
-	    slot_config.gpio_sck  = CONFIG_SDCARD_CLK;
-	    slot_config.gpio_cs   = CONFIG_SDCARD_CS;
-	    card_mode = 1;
-	#else
-		sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-		sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-		#if defined(CONFIG_SDCARD_MODE2)
-	        // Use 1-line SD mode
-		    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);
-		    gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
-		    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);
-	        host.flags = SDMMC_HOST_FLAG_1BIT;
-	        slot_config.width = 1;
-		    card_mode = 2;
-		#else
-	        // Use 4-line SD mode
-	        gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);
-	        gpio_set_pull_mode(14, GPIO_PULLUP_ONLY);
-	        gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);
-	        gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);
-	        gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);
-	        gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);
-		    card_mode = 3;
-		#endif
-	#endif
+    esp_err_t ret;
 
 	esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES
     };
 
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount(VFS_NATIVE_SDCARD_MOUNT_POINT, &host, &slot_config, &mount_config, &sdmmc_card);
+	// Configure sdmmc interface
+	if (sdcard_config.mode == 1) {
+    	// Use SPI mode
+		sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+		sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
+		host.slot = VSPI_HOST;
+		host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+		slot_config.dma_channel = 2;
+		_setPins(sdcard_config.miso, sdcard_config.mosi, sdcard_config.clk, sdcard_config.cs);
+
+	    slot_config.gpio_miso = sdcard_config.miso;
+	    slot_config.gpio_mosi = sdcard_config.mosi;
+	    slot_config.gpio_sck  = sdcard_config.clk;
+	    slot_config.gpio_cs   = sdcard_config.cs;
+	    ret = esp_vfs_fat_sdmmc_mount(VFS_NATIVE_SDCARD_MOUNT_POINT, &host, &slot_config, &mount_config, &sdmmc_card);
+	}
+	else {
+		sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+		sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+		host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+		_setPins(2, 14, 15, 13);
+		if (sdcard_config.mode == 2) {
+	        // Use 1-line SD mode
+	        host.flags = SDMMC_HOST_FLAG_1BIT;
+	        slot_config.width = 1;
+		}
+		else {
+	        // Use 4-line SD mode
+			_setPins(4, 12, -1, -1);
+		}
+	    ret = esp_vfs_fat_sdmmc_mount(VFS_NATIVE_SDCARD_MOUNT_POINT, &host, &slot_config, &mount_config, &sdmmc_card);
+	}
+
     if (ret != ESP_OK) {
         if (ret == ESP_FAIL) {
             ESP_LOGE(TAG, "Failed to mount filesystem on SDcard.");
@@ -741,13 +796,12 @@ static void _sdcard_mount()
         else {
             ESP_LOGE(TAG, "Failed to initialize SDcard (%d).", ret);
         }
-		#if defined(CONFIG_SDCARD_MODE1)
-        sdspi_host_deinit();
-		#endif
-		mp_raise_OSError(MP_EIO);
+    	if (sdcard_config.mode == 1) sdspi_host_deinit();
+
+    	mp_raise_OSError(MP_EIO);
     }
 	ESP_LOGV(TAG, "SDCard FATFS mounted.");
-    sdcard_print_info(sdmmc_card, card_mode);
+    sdcard_print_info(sdmmc_card, sdcard_config.mode);
 	native_vfs_mounted[VFS_NATIVE_TYPE_SDCARD] = true;
 }
 
@@ -770,28 +824,48 @@ STATIC mp_obj_t native_vfs_mount(mp_obj_t self_in, mp_obj_t readonly, mp_obj_t m
 	if (self->device == VFS_NATIVE_TYPE_SPIFLASH) {
 		// spiflash device
 		esp_err_t ret;
-		#if MICROPY_USE_SPIFFS
-	    fs_partition = (esp_partition_t *)esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "internalfs");
+		#if CONFIG_MICROPY_FILESYSTEM_TYPE == 0
+	    fs_partition = (esp_partition_t *)esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, VFS_NATIVE_INTERNAL_PART_LABEL);
 	    if (fs_partition == NULL) {
 			printf("\nInternal SPIFFS: File system partition definition not found!\n");
 			return mp_const_none;
 	    }
 	    esp_vfs_spiffs_conf_t conf = {
 	      .base_path = VFS_NATIVE_MOUNT_POINT,
-	      .partition_label = "internalfs",
+	      .partition_label = VFS_NATIVE_INTERNAL_PART_LABEL,
 	      .max_files = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES,
 	      .format_if_mount_failed = true
 	    };
 	    ret = esp_vfs_spiffs_register(&conf);
 	   	//if (spiffs_is_mounted == 0) {
-	    if ((ret != ESP_OK) || (!esp_spiffs_mounted("internalfs"))) {
+	    if ((ret != ESP_OK) || (!esp_spiffs_mounted(VFS_NATIVE_INTERNAL_PART_LABEL))) {
 			ESP_LOGE(TAG, "Failed to mount Flash partition as SPIFFS.");
 			return mp_const_false;
 	   	}
 		native_vfs_mounted[self->device] = true;
 		checkBoot_py();
+		#elif CONFIG_MICROPY_FILESYSTEM_TYPE == 2
+	    fs_partition = (esp_partition_t *)esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, VFS_NATIVE_INTERNAL_PART_LABEL);
+	    if (fs_partition == NULL) {
+			printf("\nInternal LittleFS: File system partition definition not found!\n");
+			return mp_const_none;
+	    }
+	    const little_flash_config_t little_cfg = {
+	        .part = fs_partition,
+	        .base_path = VFS_NATIVE_MOUNT_POINT,
+	        .open_files = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES,
+	        .auto_format = true,
+	        .lookahead = 32
+	    };
+	    ret = littleFlash_init(&little_cfg);
+	    if (ret != ESP_OK) {
+			ESP_LOGE(TAG, "Failed to mount Flash partition as LittleFS.");
+			return mp_const_false;
+	   	}
+		native_vfs_mounted[self->device] = true;
+		checkBoot_py();
 		#else
-	    fs_partition = (esp_partition_t *)esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "internalfs");
+	    fs_partition = (esp_partition_t *)esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, VFS_NATIVE_INTERNAL_PART_LABEL);
 	    if (fs_partition == NULL) {
 			printf("\nInternal FatFS: File system partition definition not found!\n");
 			return mp_const_none;
@@ -802,7 +876,7 @@ STATIC mp_obj_t native_vfs_mount(mp_obj_t self_in, mp_obj_t readonly, mp_obj_t m
 			.max_files              = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES,
 		};
 		// Mount spi Flash filesystem using configuration from sdkconfig.h
-		esp_err_t err = esp_vfs_fat_spiflash_mount(VFS_NATIVE_MOUNT_POINT, "internalfs", &mount_config, &s_wl_handle);
+		esp_err_t err = esp_vfs_fat_spiflash_mount(VFS_NATIVE_MOUNT_POINT, VFS_NATIVE_INTERNAL_PART_LABEL, &mount_config, &s_wl_handle);
 
 		if (err != ESP_OK) {
 			ESP_LOGE(TAG, "Failed to mount Flash partition as FatFS(%d)", err);
@@ -816,15 +890,22 @@ STATIC mp_obj_t native_vfs_mount(mp_obj_t self_in, mp_obj_t readonly, mp_obj_t m
 		int f_bsize=0, f_blocks=0, f_bfree=0;
 		ret = ESP_FAIL;
 		printf("\nInternal FS ");
-		#if MICROPY_USE_SPIFFS
+		#if CONFIG_MICROPY_FILESYSTEM_TYPE == 0
 			printf("(SPIFFS): ");
 			uint32_t total, used;
-			if (esp_spiffs_info("internalfs", &total, &used) == ESP_OK) {
+			if (esp_spiffs_info(VFS_NATIVE_INTERNAL_PART_LABEL, &total, &used) == ESP_OK) {
 				f_bsize = 256;
 				f_blocks = total / 256;
 				f_bfree = (total-used) / 256;
 				ret = ESP_OK;
 			}
+		#elif CONFIG_MICROPY_FILESYSTEM_TYPE == 2
+			printf("(LittleFS ver %d.%d): ", LFS_VERSION_MAJOR, LFS_VERSION_MINOR);
+			uint32_t used = littleFlash_getUsedBlocks();
+			f_bsize = littleFlash.lfs_cfg.block_size;
+			f_blocks = littleFlash.lfs_cfg.block_count;
+			f_bfree = f_blocks - used;
+			ret = ESP_OK;
 		#else
 			printf("(FatFS): ");
 			if (fs_partition->encrypted)	printf("[Encrypted] ");
@@ -862,9 +943,7 @@ STATIC mp_obj_t native_vfs_umount(mp_obj_t self_in) {
 
 	if ((self->device == VFS_NATIVE_TYPE_SDCARD) && (native_vfs_mounted[self->device])) {
 		esp_err_t ret = esp_vfs_fat_sdmmc_unmount();
-		#if defined(CONFIG_SDCARD_MODE1)
-		sdspi_host_deinit();
-		#endif
+		if (sdcard_config.mode == 1) sdspi_host_deinit();
 	    if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to unmount filesystem on SDcard (%d).", ret);
 			mp_raise_OSError(MP_EIO);
@@ -886,9 +965,11 @@ int internalUmount()
 {
 	int res = 0;
     if (native_vfs_mounted[VFS_NATIVE_TYPE_SPIFLASH]) {
-		#if MICROPY_USE_SPIFFS
-    	res = esp_vfs_spiffs_unregister("internalfs");
+		#if CONFIG_MICROPY_FILESYSTEM_TYPE == 0
+    	res = esp_vfs_spiffs_unregister(VFS_NATIVE_INTERNAL_PART_LABEL);
     	if (res) res = 0;
+		#elif CONFIG_MICROPY_FILESYSTEM_TYPE == 2
+    	littleFlash_term(VFS_NATIVE_INTERNAL_PART_LABEL);
 		#else
     	if (s_wl_handle != WL_INVALID_HANDLE) res = wl_unmount(s_wl_handle);
     	if (res) res = 0;
@@ -898,22 +979,24 @@ int internalUmount()
     return res;
 }
 
-//-----------------
-int externalUmount()
+//-------------------
+void externalUmount()
 {
-	int res = 0;
     if (native_vfs_mounted[VFS_NATIVE_TYPE_SDCARD]) {
     	esp_vfs_fat_sdmmc_unmount();
-    	if (res) res = 0;
-		#if defined(CONFIG_SDCARD_MODE1)
-		sdspi_host_deinit();
-		#endif
+    	if (sdcard_config.mode == 1) sdspi_host_deinit();
 		native_vfs_mounted[VFS_NATIVE_TYPE_SDCARD] = false;
     }
-
-    return res;
 }
 
+//-------------------------------------
+bool file_noton_spi_sdcard(char *fname)
+{
+	if (sdcard_config.mode == 1) {
+		if (strstr(fname, VFS_NATIVE_SDCARD_MOUNT_POINT)) return false;
+	}
+    return true;
+}
 
 //-------------------------------------
 int mount_vfs(int type, char *chdir_to)
@@ -932,7 +1015,7 @@ int mount_vfs(int type, char *chdir_to)
 
     // mount flash file system
     args2[0] = vfso;
-    args2[1] = mp_obj_new_str(mp, strlen(mp), false);
+    args2[1] = mp_obj_new_str(mp, strlen(mp));
     mp_call_function_n_kw(MP_OBJ_FROM_PTR(&mp_vfs_mount_obj), 2, 0, args2);
 
     if (native_vfs_mounted[type]) {
@@ -946,21 +1029,23 @@ int mount_vfs(int type, char *chdir_to)
     return 0;
 }
 
+
 //===============================================================
 STATIC const mp_rom_map_elem_t native_vfs_locals_dict_table[] = {
-	{ MP_ROM_QSTR(MP_QSTR_mkfs), MP_ROM_PTR(&native_vfs_mkfs_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_open), MP_ROM_PTR(&native_vfs_open_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_ilistdir), MP_ROM_PTR(&native_vfs_ilistdir_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_mkdir), MP_ROM_PTR(&native_vfs_mkdir_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_rmdir), MP_ROM_PTR(&native_vfs_rmdir_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_chdir), MP_ROM_PTR(&native_vfs_chdir_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_getcwd), MP_ROM_PTR(&native_vfs_getcwd_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_remove), MP_ROM_PTR(&native_vfs_remove_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_rename), MP_ROM_PTR(&native_vfs_rename_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_stat), MP_ROM_PTR(&native_vfs_stat_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_statvfs), MP_ROM_PTR(&native_vfs_statvfs_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_mount), MP_ROM_PTR(&native_vfs_mount_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_umount), MP_ROM_PTR(&native_vfs_umount_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_mkfs),		MP_ROM_PTR(&native_vfs_mkfs_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_open),		MP_ROM_PTR(&native_vfs_open_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_ilistdir),	MP_ROM_PTR(&native_vfs_ilistdir_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_mkdir),		MP_ROM_PTR(&native_vfs_mkdir_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_rmdir),		MP_ROM_PTR(&native_vfs_rmdir_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_chdir),		MP_ROM_PTR(&native_vfs_chdir_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_getcwd),		MP_ROM_PTR(&native_vfs_getcwd_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_getdrive),	MP_ROM_PTR(&native_vfs_getdrive_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_remove),		MP_ROM_PTR(&native_vfs_remove_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_rename),		MP_ROM_PTR(&native_vfs_rename_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_stat),		MP_ROM_PTR(&native_vfs_stat_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_statvfs),		MP_ROM_PTR(&native_vfs_statvfs_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_mount),		MP_ROM_PTR(&native_vfs_mount_obj) },
+	{ MP_ROM_QSTR(MP_QSTR_umount),		MP_ROM_PTR(&native_vfs_umount_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(native_vfs_locals_dict, native_vfs_locals_dict_table);
 

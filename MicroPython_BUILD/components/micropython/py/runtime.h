@@ -4,6 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +28,7 @@
 #define MICROPY_INCLUDED_PY_RUNTIME_H
 
 #include "py/mpstate.h"
+#include "py/pystack.h"
 
 typedef enum {
     MP_VM_RETURN_NORMAL,
@@ -56,6 +58,41 @@ typedef struct _mp_arg_t {
     mp_arg_val_t defval;
 } mp_arg_t;
 
+#if MICROPY_ENABLE_SCHEDULER
+//--------------------------
+
+#define MP_SCHED_CTYPE_MAX_ITEMS	4
+
+#define MP_SCHED_CTYPE_NONE			0
+#define MP_SCHED_CTYPE_SINGLE		1
+#define MP_SCHED_CTYPE_TUPLE		2
+#define MP_SCHED_CTYPE_DICT			3
+
+#define MP_SCHED_ENTRY_TYPE_NONE	0
+#define MP_SCHED_ENTRY_TYPE_INT		1
+#define MP_SCHED_ENTRY_TYPE_BOOL	2
+#define MP_SCHED_ENTRY_TYPE_FLOAT	3
+#define MP_SCHED_ENTRY_TYPE_STR		4
+#define MP_SCHED_ENTRY_TYPE_BYTES	5
+#define MP_SCHED_ENTRY_TYPE_CARG	6
+
+typedef struct _mp_sched_carg_t {
+	uint8_t	type;
+	uint8_t	n;
+	void	*entry[MP_SCHED_CTYPE_MAX_ITEMS];
+} mp_sched_carg_t;
+
+typedef struct _mp_sched_carg_entry_t {
+	uint8_t 		type;
+	int				ival;
+	float			fval;
+	uint8_t			*sval;
+	char 			key[16];
+	mp_sched_carg_t	*carg;
+} mp_sched_carg_entry_t;
+
+#endif
+
 // Tables mapping operator enums to qstrs, defined in objtype.c
 extern const byte mp_unary_op_method_name[];
 extern const byte mp_binary_op_method_name[];
@@ -67,10 +104,17 @@ void mp_handle_pending(void);
 void mp_handle_pending_tail(mp_uint_t atomic_state);
 
 #if MICROPY_ENABLE_SCHEDULER
+
 void mp_sched_lock(void);
 void mp_sched_unlock(void);
 static inline unsigned int mp_sched_num_pending(void) { return MP_STATE_VM(sched_sp); }
-bool mp_sched_schedule(mp_obj_t function, mp_obj_t arg);
+bool mp_sched_schedule(mp_obj_t function, mp_obj_t arg, void *carg);
+
+void free_carg(mp_sched_carg_t *carg);
+mp_sched_carg_t *make_carg_entry(mp_sched_carg_t *carg, int idx, uint8_t type, int val, const uint8_t *sval, const char *key);
+mp_sched_carg_t *make_cargs(int type);
+mp_sched_carg_t *make_carg_entry_carg(mp_sched_carg_t *carg, int idx, mp_sched_carg_t *darg);
+
 #endif
 
 // extra printing method specifically for mp_obj_t's which are integral type
@@ -106,8 +150,9 @@ mp_obj_t mp_call_method_n_kw(size_t n_args, size_t n_kw, const mp_obj_t *args);
 mp_obj_t mp_call_method_n_kw_var(bool have_self, size_t n_args_n_kw, const mp_obj_t *args);
 mp_obj_t mp_call_method_self_n_kw(mp_obj_t meth, mp_obj_t self, size_t n_args, size_t n_kw, const mp_obj_t *args);
 // Call function and catch/dump exception - for Python callbacks from C code
-void mp_call_function_1_protected(mp_obj_t fun, mp_obj_t arg);
-void mp_call_function_2_protected(mp_obj_t fun, mp_obj_t arg1, mp_obj_t arg2);
+// (return MP_OBJ_NULL in case of exception).
+mp_obj_t mp_call_function_1_protected(mp_obj_t fun, mp_obj_t arg);
+mp_obj_t mp_call_function_2_protected(mp_obj_t fun, mp_obj_t arg1, mp_obj_t arg2);
 
 typedef struct _mp_call_args_t {
     mp_obj_t fun;
@@ -150,7 +195,7 @@ NORETURN void mp_raise_ValueError(const char *msg);
 NORETURN void mp_raise_TypeError(const char *msg);
 NORETURN void mp_raise_NotImplementedError(const char *msg);
 NORETURN void mp_raise_OSError(int errno_);
-NORETURN void mp_exc_recursion_depth(void);
+NORETURN void mp_raise_recursion_depth(void);
 
 #if MICROPY_BUILTIN_METHOD_CHECK_SELF_ARG
 #undef mp_check_self

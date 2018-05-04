@@ -1,3 +1,29 @@
+/*
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
+ *
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
 // Options to control how MicroPython is built for this port,
 // overriding defaults in py/mpconfig.h.
 
@@ -95,6 +121,7 @@
 #define MICROPY_PY_ARRAY_SLICE_ASSIGN       (1)
 #define MICROPY_PY_ATTRTUPLE                (1)
 #define MICROPY_PY_COLLECTIONS              (1)
+#define MICROPY_PY_COLLECTIONS_DEQUE        (1)
 #define MICROPY_PY_COLLECTIONS_ORDEREDDICT  (1)
 #define MICROPY_PY_MATH                     (1)
 #define MICROPY_PY_MATH_SPECIAL_FUNCTIONS   (1)
@@ -125,8 +152,6 @@
 #define MICROPY_PY_URE                      (1)
 #define MICROPY_PY_UHEAPQ                   (1)
 #define MICROPY_PY_UTIMEQ                   (1)
-#define MICROPY_PY_UHASHLIB                 (0) // We use the ESP32 version
-#define MICROPY_PY_UHASHLIB_SHA1            (MICROPY_PY_USSL && MICROPY_SSL_AXTLS)
 #define MICROPY_PY_UBINASCII                (1)
 #define MICROPY_PY_UBINASCII_CRC32          (1)
 #define MICROPY_PY_URANDOM                  (1)
@@ -143,6 +168,10 @@
 #define MICROPY_PY_MACHINE_SPI_MAX_BAUDRATE (ets_get_cpu_frequency() * 1000000 / 200) // roughly
 #define MICROPY_PY_USSL                     (1)
 #define MICROPY_SSL_MBEDTLS                 (1)
+#define MICROPY_PY_USSL_FINALISER           (1)
+#define MICROPY_PY_UHASHLIB                 (0) // We use the ESP32 version
+#define MICROPY_PY_UHASHLIB_SHA1            (MICROPY_PY_USSL && MICROPY_SSL_MBEDTLS)
+
 #ifdef CONFIG_MICROPY_USE_WEBSOCKETS
 #define MICROPY_PY_WEBSOCKET                (1)
 #else
@@ -187,12 +216,6 @@
 #define MICROPY_INTERNALFS_ENCRIPTED        (1)	// use encription on filesystem (UNTESTED!)
 #else
 #define MICROPY_INTERNALFS_ENCRIPTED        (0) // do not use encription on filesystem
-#endif
-
-#if defined(CONFIG_MICROPY_USE_SPIFFS)
-#define MICROPY_USE_SPIFFS					(1)	// use spiffs instead of FatFS on spi Flash
-#else
-#define MICROPY_USE_SPIFFS					(0)
 #endif
 
 // === sdcard using ESP32 sdmmc driver configuration ===
@@ -257,6 +280,13 @@ extern const struct _mp_obj_module_t mp_module_ota;
 #define BUILTIN_MODULE_OTA
 #endif
 
+#ifdef CONFIG_MICROPY_USE_BLUETOOTH
+extern const struct _mp_obj_module_t mp_module_bluetooth;
+#define BUILTIN_MODULE_BLUETOOTH { MP_OBJ_NEW_QSTR(MP_QSTR_bluetooth), (mp_obj_t)&mp_module_bluetooth },
+#else
+#define BUILTIN_MODULE_BLUETOOTH
+#endif
+
 #define MICROPY_PORT_BUILTIN_MODULES \
     { MP_OBJ_NEW_QSTR(MP_QSTR_utime),    (mp_obj_t)&utime_module }, \
     { MP_OBJ_NEW_QSTR(MP_QSTR_uos),      (mp_obj_t)&uos_module }, \
@@ -271,6 +301,7 @@ extern const struct _mp_obj_module_t mp_module_ota;
 	BUILTIN_MODULE_SSH \
 	BUILTIN_MODULE_GSM \
 	BUILTIN_MODULE_OTA \
+	BUILTIN_MODULE_BLUETOOTH \
 
 #define MICROPY_PORT_BUILTIN_MODULE_WEAK_LINKS \
     { MP_OBJ_NEW_QSTR(MP_QSTR_binascii), (mp_obj_t)&mp_module_ubinascii }, \
@@ -340,10 +371,12 @@ extern const struct _mp_obj_module_t mp_module_ota;
 typedef int32_t mp_int_t; // must be pointer size
 typedef uint32_t mp_uint_t; // must be pointer size
 typedef long mp_off_t;
+// ssize_t, off_t as required by POSIX-signatured functions in stream.h
+#include <sys/types.h>
 
 // board specifics
 
+#define MICROPY_PY_SYS_PLATFORM "esp32_LoBo"
 #define MICROPY_HW_BOARD_NAME   CONFIG_MICROPY_HW_BOARD_NAME
 #define MICROPY_HW_MCU_NAME     CONFIG_MICROPY_HW_MCU_NAME
-#define MICROPY_PY_SYS_PLATFORM "esp32"
 #define MICROPY_TIMEZONE        CONFIG_MICROPY_TIMEZONE

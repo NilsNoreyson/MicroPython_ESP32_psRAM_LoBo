@@ -4,6 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2013-2016 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -69,7 +70,7 @@ STATIC void mp_help_add_from_names(mp_obj_t list, const char *name) {
     while (*name) {
         size_t l = strlen(name);
         // name should end in '.py' and we strip it off
-        mp_obj_list_append(list, mp_obj_new_str(name, l - 3, false));
+        mp_obj_list_append(list, mp_obj_new_str(name, l - 3));
         name += l + 1;
     }
 }

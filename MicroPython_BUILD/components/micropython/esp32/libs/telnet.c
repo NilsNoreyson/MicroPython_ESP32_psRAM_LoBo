@@ -1,16 +1,9 @@
 /*
- * This file is based on 'telnet' from Pycom Limited.
- *
- * Author: LoBo, https://loboris@github.com, loboris@gmail.com
- * Copyright (c) 2017, LoBo
- */
-
-/*
- * This file is part of the MicroPython project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2016 Damien P. George on behalf of Pycom Ltd
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +22,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ */
+/*
+ * This file is based on 'telnet' from Pycom Limited.
+ *
+ * Author: LoBo, loboris@gmail.com
+ * Copyright (c) 2017, LoBo
  */
 
 #include "sdkconfig.h"
@@ -722,6 +721,16 @@ bool telnet_terminate (void) {
 	telnet_stop = 1;
 	xSemaphoreGive(telnet_mutex);
 	return true;
+}
+
+//----------------------------
+bool telnet_stop_requested() {
+	if ((TelnetTaskHandle == NULL) || (telnet_mutex == NULL)) return false;
+	if (xSemaphoreTake(telnet_mutex, TELNET_MUTEX_TIMEOUT_MS / portTICK_PERIOD_MS) !=pdTRUE) return false;
+
+	bool res = (telnet_stop == 1);
+	xSemaphoreGive(telnet_mutex);
+	return res;
 }
 
 //----------------------------------

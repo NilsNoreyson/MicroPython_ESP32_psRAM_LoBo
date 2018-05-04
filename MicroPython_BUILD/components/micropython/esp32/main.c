@@ -1,14 +1,10 @@
 /*
- * This file is part of the MicroPython project, http://micropython.org/
- *
- * Development of the code in this file was sponsored by Microbric Pty Ltd
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2016 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
- * Copyright (c) 2017 Boris Lovosevic (External SPIRAM support)
- * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -30,6 +26,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -42,6 +39,7 @@
 #include "esp_log.h"
 #include "driver/periph_ctrl.h"
 #include "esp_ota_ops.h"
+#include "esp_pm.h"
 
 #include "py/stackctrl.h"
 #include "py/nlr.h"
@@ -66,6 +64,8 @@
 #include "mqtt.h"
 #endif
 
+#include "driver/uart.h"
+#include "rom/uart.h"
 #include "sdkconfig.h"
 
 
@@ -75,55 +75,78 @@
 
 #define NVS_NAMESPACE       "MPY_NVM"
 #define MP_TASK_PRIORITY	CONFIG_MICROPY_TASK_PRIORITY
-#define MP_TASK_STACK_SIZE	(CONFIG_MICROPY_STACK_SIZE * 1024)
-#define MP_TASK_HEAP_SIZE	(CONFIG_MICROPY_HEAP_SIZE * 1024)
-#define MP_TASK_STACK_LEN	(MP_TASK_STACK_SIZE / sizeof(StackType_t))
+#define MP_TASK_STACK_LEN	3072
 
-STATIC TaskHandle_t MainTaskHandle = NULL;
-
-STATIC StaticTask_t DRAM_ATTR mp_task_tcb;
-STATIC StackType_t DRAM_ATTR mp_task_stack[MP_TASK_STACK_LEN] __attribute__((aligned (8)));
-
-STATIC uint8_t *mp_task_heap;
+static StaticTask_t DRAM_ATTR mp_task_tcb;
+static StackType_t *mp_task_stack;
+static uint8_t *mp_task_heap;
+static int mp_task_stack_len = 4092;
 
 int MainTaskCore = 0;
+
 
 //===============================
 void mp_task(void *pvParameter) {
     volatile uint32_t sp = (uint32_t)get_sp();
 
-	#ifdef CONFIG_MICROPY_USE_TASK_WDT
-    // Enable watchdog for MicroPython main task
-    esp_task_wdt_init(CONFIG_TASK_WDT_TIMEOUT_S, false);
-    esp_task_wdt_add(MainTaskHandle);
-    esp_task_wdt_reset();
+    uart_config_t uartcfg = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 0,
+		.use_ref_tick = true
+    };
+    uart_param_config(UART_NUM_0, &uartcfg);
+   	uart_set_baudrate(UART_NUM_0, CONFIG_CONSOLE_UART_BAUDRATE);
+
+   	/*
+    // ---- esp-idf PM bug! ----------------------------------------------------------------------------------------
+	#if defined(CONFIG_PM_ENABLE) && !defined(CONFIG_PM_DFS_INIT_AUTO) && defined(CONFIG_ESP32_DEFAULT_CPU_FREQ_240)
+    esp_pm_config_esp32_t pm_config;
+	pm_config.max_cpu_freq = RTC_CPU_FREQ_160M;
+   	pm_config.min_cpu_freq = RTC_CPU_FREQ_XTAL;
+   	pm_config.light_sleep_enable = false;
+   	esp_pm_configure(&pm_config);
+    rtc_clk_cpu_freq_set(RTC_CPU_FREQ_160M);
+   	uart_set_baudrate(UART_NUM_0, CONFIG_CONSOLE_UART_BAUDRATE);
+	pm_config.max_cpu_freq = RTC_CPU_FREQ_240M;
+   	esp_pm_configure(&pm_config);
+    rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);
+   	uart_set_baudrate(UART_NUM_0, CONFIG_CONSOLE_UART_BAUDRATE);
 	#endif
+    // -------------------------------------------------------------------------------------------------------------
+	*/
 
     uart_init();
 
-    // Check and open NVS name space
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &mpy_nvs_handle) != ESP_OK) {
-    	mpy_nvs_handle = 0;
-        printf("Error while opening MicroPython NVS name space\n");
-    }
+	#if CONFIG_BOOT_SET_LED >= 0
+	// Deactivate boot led
+	gpio_pad_select_gpio(CONFIG_BOOT_SET_LED);
+	GPIO_OUTPUT_SET(CONFIG_BOOT_SET_LED, CONFIG_BOOT_LED_ON ^ 1);
+	#endif
 
-    // Get and print reset & wakeup reasons
+	// Get and print reset & wakeup reasons
     mpsleep_init0();
 
     if (mpsleep_get_reset_cause() != MPSLEEP_DEEPSLEEP_RESET) rtc_init0();
 
-    mp_thread_preinit(&mp_task_stack[0], MP_TASK_STACK_LEN);
+    mp_thread_preinit(&mp_task_stack[0], mp_task_stack_len);
 
-soft_reset:
 	// Thread init
 	mp_thread_init();
 
     // Initialize the stack pointer for the main thread
     mp_stack_set_top((void *)sp);
-    mp_stack_set_limit(MP_TASK_STACK_SIZE - 1024);
+	#ifdef CONFIG_MICROPY_USE_THREADED_REPL
+    mp_stack_set_limit(mp_task_stack_len - 256);
+	#else
+    mp_stack_set_limit(mp_task_stack_len - 1024);
+	#endif
 
     // initialize the mp heap
-    gc_init(mp_task_heap, mp_task_heap + MP_TASK_HEAP_SIZE);
+    gc_init(mp_task_heap, mp_task_heap + mpy_heap_size);
 
     mp_init();
     mp_obj_list_init(mp_sys_path, 0);
@@ -138,6 +161,7 @@ soft_reset:
 
     // === Mount internal flash file system ===
     int res = mount_vfs(VFS_NATIVE_TYPE_SPIFLASH, VFS_NATIVE_INTERNAL_MP);
+
     if (res == 0) {
     	// run boot-up script 'boot.py'
         pyexec_file("boot.py");
@@ -151,19 +175,19 @@ soft_reset:
             }
         }
     }
-    else printf("Error mounting Flash file system\n");
+    else ESP_LOGE("MicroPython", "Error mounting Flash file system");
 
     // === Print some info ===
     char sbuff[24] = { 0 };
     gc_info_t info;
     gc_info(&info);
-    // set gc.threshold to 87.5% of usable heap
-	MP_STATE_MEM(gc_alloc_threshold) = ((info.total / 8) * 7) / MICROPY_BYTES_PER_GC_BLOCK;
+    // set gc.threshold to 80% of usable heap
+	MP_STATE_MEM(gc_alloc_threshold) = ((info.total / 10) * 8) / MICROPY_BYTES_PER_GC_BLOCK;
 
 	#if CONFIG_FREERTOS_UNICORE
     	printf("\nFreeRTOS running only on FIRST CORE.\n");
 	#else
-		#if CONFIG_SPIRAM_SUPPORT
+		#if CONFIG_MICROPY_USE_BOTH_CORES
     		printf("\nFreeRTOS running on BOTH CORES, MicroPython task running on both cores.\n");
 		#else
     		printf("\nFreeRTOS running on BOTH CORES, MicroPython task started on App Core.\n");
@@ -189,7 +213,11 @@ soft_reset:
 		printf("Wakeup source: %s\n", sbuff);
 	}
 
-	printf("    uPY stack: %d bytes\n", MP_TASK_STACK_LEN-1024);
+	#ifdef CONFIG_MICROPY_USE_THREADED_REPL
+	printf("   REPL stack: %d bytes\n", mpy_repl_stack_size);
+	#else
+	printf("    uPY stack: %d bytes\n", mp_task_stack_len);
+	#endif
 
 	#if CONFIG_SPIRAM_SUPPORT
 		// ## USING SPI RAM FOR HEAP ##
@@ -206,58 +234,158 @@ soft_reset:
 	#endif
 
 	// === Main loop ==================================
-    for (;;) {
-        if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
-            if (pyexec_raw_repl() != 0) {
-                break;
-            }
-        }
-        else {
-            if (pyexec_friendly_repl() != 0) {
-                break;
-            }
-        }
-    }
+   	MP_THREAD_GIL_EXIT();
+
+	#ifdef CONFIG_MICROPY_USE_TASK_WDT
+	// Enable watchdog for MicroPython main task
+	esp_task_wdt_init(CONFIG_TASK_WDT_TIMEOUT_S, false);
+	esp_task_wdt_add(MainTaskHandle);
+	esp_task_wdt_reset();
+	#endif
+
+	#ifdef CONFIG_MICROPY_USE_THREADED_REPL
+   	// === Start REPL in separate thread ===
+	pyexec_frozen_module("modREPL.py");
+	#ifdef CONFIG_MICROPY_USE_TASK_WDT
+	if (ReplTaskHandle) {
+		// Enable watchdog for MicroPython main task
+		esp_task_wdt_init(CONFIG_TASK_WDT_TIMEOUT_S, false);
+		esp_task_wdt_add(ReplTaskHandle);
+		esp_task_wdt_reset();
+	}
+	#endif
+	if (!ReplTaskHandle) {
+        printf("!! Error starting threaded REPL, Halted. !!\n");
+	}
+	while (1) {
+		// Main task just waits doing nothing
+		vTaskDelay(CONFIG_TASK_WDT_TIMEOUT_S * 500 / portTICK_RATE_MS);
+		#ifdef CONFIG_MICROPY_USE_TASK_WDT
+		esp_task_wdt_reset();
+		#endif
+	}
+	#else
+	// === Start REPL in main task ===
+	ReplTaskHandle = MainTaskHandle;
+	for (;;) {
+		if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
+			if (pyexec_raw_repl() != 0) {
+				break;
+			}
+		}
+		else {
+			if (pyexec_friendly_repl() != 0) {
+				break;
+			}
+		}
+	}
+	#endif
 	// ================================================
 
+    //ToDo: Remember the REPL mode (is it needed ?) !!
     prepareSleepReset(0, "ESP32: soft reboot\r\n");
-
-    goto soft_reset;
+    esp_restart(); // no return !!
 }
 
 
 //============================
-void micropython_entry(void) {
-    nvs_flash_init();
-
-    // === Set esp32 log levels while running MicroPython ===
-	esp_log_level_set("*", CONFIG_MICRO_PY_LOG_LEVEL);
-	esp_log_level_set("wifi", 1);
-	esp_log_level_set("rmt", 1);
+void micropython_entry(void)
+{
+	// === Set esp32 log levels while running MicroPython ===
+	if (CONFIG_MICRO_PY_LOG_LEVEL < CONFIG_LOG_DEFAULT_LEVEL) esp_log_level_set("*", CONFIG_MICRO_PY_LOG_LEVEL);
+	if ((CONFIG_LOG_DEFAULT_LEVEL > ESP_LOG_WARN) && (CONFIG_MICRO_PY_LOG_LEVEL > ESP_LOG_WARN)){
+		esp_log_level_set("wifi", ESP_LOG_WARN);
+		esp_log_level_set("rmt", ESP_LOG_WARN);
+		esp_log_level_set("tcpip_adapter", ESP_LOG_WARN);
+		esp_log_level_set("event", ESP_LOG_WARN);
+		esp_log_level_set("nvs", ESP_LOG_WARN);
+		esp_log_level_set("phy_init", ESP_LOG_WARN);
+		esp_log_level_set("wl_flash", ESP_LOG_WARN);
+		esp_log_level_set("RTC_MODULE", ESP_LOG_WARN);
+	}
 	#ifdef CONFIG_MICROPY_USE_OTA
-	esp_log_level_set("OTA_UPDATE", 4);
+	if (CONFIG_LOG_DEFAULT_LEVEL >= ESP_LOG_DEBUG) esp_log_level_set("OTA_UPDATE", ESP_LOG_DEBUG);
+	else esp_log_level_set("OTA_UPDATE", CONFIG_LOG_DEFAULT_LEVEL);
 	#endif
 
-	#ifdef CONFIG_MICROPY_USE_MQTT
+    #ifdef CONFIG_MICROPY_USE_MQTT
 	esp_log_level_set(MQTT_TAG, CONFIG_MQTT_LOG_LEVEL);
 	#endif
 	#ifdef CONFIG_MICROPY_USE_FTPSERVER
 	esp_log_level_set(FTP_TAG, CONFIG_FTPSERVER_LOG_LEVEL);
 	#endif
 
+    nvs_flash_init();
+
+    // === Check and allocate stack ===
+    // Open NVS name space
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &mpy_nvs_handle) != ESP_OK) {
+    	mpy_nvs_handle = 0;
+    	ESP_LOGE("MicroPython","Error while opening MicroPython NVS name space");
+    }
+    if (mpy_nvs_handle != 0) {
+    	// Get stack size from NVS
+        if (ESP_ERR_NVS_NOT_FOUND == nvs_get_i32(mpy_nvs_handle, "MPY_StackSize", &mpy_repl_stack_size)) {
+        	mpy_repl_stack_size = CONFIG_MICROPY_STACK_SIZE * 1024;
+        }
+        else {
+            if ((mpy_repl_stack_size < MPY_MIN_STACK_SIZE) || (mpy_repl_stack_size > MPY_MAX_STACK_SIZE)) {
+            	mpy_repl_stack_size = CONFIG_MICROPY_STACK_SIZE * 1024;
+            	ESP_LOGE("MicroPython","Wrong Stack size set in NVS: %d (set to configured: %d)", mpy_heap_size, CONFIG_MICROPY_HEAP_SIZE * 1024);
+            }
+            else {
+            	ESP_LOGW("MicroPython","Stack size set from NVS: %d (configured: %d)", mpy_repl_stack_size, CONFIG_MICROPY_STACK_SIZE * 1024);
+            }
+        }
+        // restore time zone
+		tz_fromto_NVS(mpy_time_zone, NULL);
+		if (strlen(mpy_time_zone) > 0) {
+			setenv("TZ", mpy_time_zone, 1);
+			tzset();
+		}
+    }
+    mpy_repl_stack_size &= 0x7FFFFFFC;
+
+    #ifdef CONFIG_MICROPY_USE_THREADED_REPL
+	mp_task_stack_len = MP_TASK_STACK_LEN;
+	#else
+	mp_task_stack_len = mpy_repl_stack_size;
+	#endif
+	mp_task_stack = heap_caps_malloc(mp_task_stack_len, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+	if (mp_task_stack == NULL) {
+        printf("Error allocating stack, Halted.\n");
+        return;
+	}
+
     // ==== Allocate heap memory ====
+    if (mpy_nvs_handle != 0) {
+        // Get heap size from NVS
+        if (ESP_ERR_NVS_NOT_FOUND == nvs_get_i32(mpy_nvs_handle, "MPY_HeapSize", &mpy_heap_size)) {
+        	mpy_heap_size = CONFIG_MICROPY_HEAP_SIZE * 1024;
+        }
+        else {
+            if ((mpy_heap_size < MPY_MIN_HEAP_SIZE) || (mpy_heap_size > MPY_MAX_HEAP_SIZE)) {
+            	mpy_heap_size = CONFIG_MICROPY_HEAP_SIZE * 1024;
+            	ESP_LOGE("MicroPython","Wrong Heap size set in NVS: %d (set to configured: %d)", mpy_heap_size, CONFIG_MICROPY_HEAP_SIZE * 1024);
+            }
+            else {
+            	ESP_LOGW("MicroPython","Heap size set from NVS: %d (configured: %d)", mpy_heap_size, CONFIG_MICROPY_HEAP_SIZE * 1024);
+            }
+        }
+    }
+    mpy_heap_size &= 0x7FFFFFFC;
     #if CONFIG_SPIRAM_SUPPORT
 		// ## USING SPI RAM FOR HEAP ##
 		#if CONFIG_SPIRAM_USE_CAPS_ALLOC
-		mp_task_heap = heap_caps_malloc(MP_TASK_HEAP_SIZE, MALLOC_CAP_SPIRAM);
+		mp_task_heap = heap_caps_malloc(mpy_heap_size, MALLOC_CAP_SPIRAM);
 		#elif SPIRAM_USE_MEMMAP
 		mp_task_heap = (uint8_t *)0x3f800000;
 		#else
-		mp_task_heap = malloc(MP_TASK_HEAP_SIZE);
+		mp_task_heap = malloc(mpy_heap_size);
 		#endif
     #else
 		// ## USING DRAM FOR HEAP ##
-		mp_task_heap = malloc(MP_TASK_HEAP_SIZE);
+		mp_task_heap = malloc(mpy_heap_size);
     #endif
 
     if (mp_task_heap == NULL) {
@@ -269,16 +397,17 @@ void micropython_entry(void) {
     periph_module_disable(PERIPH_I2C0_MODULE);
     periph_module_enable(PERIPH_I2C0_MODULE);
 
+    printf("\n[=== MicroPython started ===]\n");
     // ==== Create and start main MicroPython task ====
 	#if CONFIG_FREERTOS_UNICORE
 		MainTaskCore = 0;
-		MainTaskHandle = xTaskCreateStaticPinnedToCore(&mp_task, "mp_task", MP_TASK_STACK_LEN, NULL, MP_TASK_PRIORITY, &mp_task_stack[0], &mp_task_tcb, 0);
+		MainTaskHandle = xTaskCreateStaticPinnedToCore(&mp_task, "mp_task", mp_task_stack_len, NULL, MP_TASK_PRIORITY, &mp_task_stack[0], &mp_task_tcb, 0);
 	#else
 		MainTaskCore = 1;
 		#if CONFIG_MICROPY_USE_BOTH_CORES
-			MainTaskHandle = xTaskCreateStatic(&mp_task, "mp_task", MP_TASK_STACK_LEN, NULL, MP_TASK_PRIORITY, &mp_task_stack[0], &mp_task_tcb);
+			MainTaskHandle = xTaskCreateStatic(&mp_task, "mp_task", mp_task_stack_len, NULL, MP_TASK_PRIORITY, &mp_task_stack[0], &mp_task_tcb);
 		#else
-			MainTaskHandle = xTaskCreateStaticPinnedToCore(&mp_task, "mp_task", MP_TASK_STACK_LEN, NULL, MP_TASK_PRIORITY, &mp_task_stack[0], &mp_task_tcb, 1);
+			MainTaskHandle = xTaskCreateStaticPinnedToCore(&mp_task, "mp_task", mp_task_stack_len, NULL, MP_TASK_PRIORITY, &mp_task_stack[0], &mp_task_tcb, 1);
 		#endif
 	#endif
 }

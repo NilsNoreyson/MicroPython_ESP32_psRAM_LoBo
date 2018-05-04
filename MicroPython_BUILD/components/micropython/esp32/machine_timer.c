@@ -1,5 +1,5 @@
 /*
- * This file is part of the MicroPython project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
@@ -60,6 +60,7 @@ typedef struct _machine_timer_obj_t {
     uint8_t state;
     uint8_t type;
     int8_t debug_pin;
+    int8_t debug_pin_mode;
     mp_uint_t repeat;
     mp_uint_t period;
     uint64_t event_num;
@@ -215,10 +216,13 @@ STATIC void machine_timer_isr(void *self_in)
     	TIMERG0.hw_timer[self->id & 1].config.alarm_en = self->repeat;
     }
 
-    if (self->debug_pin >= 0) gpio_set_level(self->debug_pin, (self->event_num & 1));
+    if (self->debug_pin >= 0) {
+    	if (self->debug_pin_mode >= 0) gpio_set_level(self->debug_pin, (self->debug_pin_mode & 1));
+    	else gpio_set_level(self->debug_pin, (self->event_num & 1));
+    }
     self->event_num++;
 
-    if ((self->callback) && (mp_sched_schedule(self->callback, self))) self->cb_num++;
+    if ((self->callback) && (mp_sched_schedule(self->callback, self, NULL))) self->cb_num++;
 }
 
 //----------------------------------------------
@@ -245,7 +249,7 @@ STATIC void machine_ext_timer_isr(void *self_in)
 				    extmr->event_num++;
 					if (extmr->counter == extmr->alarm) {
 						// Schedule the callback execution
-						if ((extmr->callback) && (mp_sched_schedule(extmr->callback, extmr))) {
+						if ((extmr->callback) && (mp_sched_schedule(extmr->callback, extmr, NULL))) {
 							extmr->cb_num++;
 							self->cb_num++;
 						}
@@ -313,6 +317,7 @@ STATIC mp_obj_t machine_timer_init_helper(machine_timer_obj_t *self, mp_uint_t n
         { MP_QSTR_mode,         MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = TIMER_TYPE_PERIODIC} },
         { MP_QSTR_callback,     MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none} },
         { MP_QSTR_dbgpin,       MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1} },
+        { MP_QSTR_dbgpinmode,   MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1} },
     };
 
     machine_timer_disable(self);
@@ -355,6 +360,7 @@ STATIC mp_obj_t machine_timer_init_helper(machine_timer_obj_t *self, mp_uint_t n
 			// set the debug gpio if used
 			if ((args[3].u_int >= 0) && (args[3].u_int < 34)) {
 				self->debug_pin = args[3].u_int;
+				self->debug_pin_mode = args[4].u_int;
 				gpio_pad_select_gpio(self->debug_pin);
 				gpio_set_direction(self->debug_pin, GPIO_MODE_OUTPUT);
 				gpio_set_level(self->debug_pin, 0);
@@ -664,7 +670,7 @@ STATIC const mp_map_elem_t machine_timer_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_init),		(mp_obj_t)&machine_timer_init_obj },
     { MP_ROM_QSTR(MP_QSTR_value),		(mp_obj_t)&machine_timer_value_obj },
     { MP_ROM_QSTR(MP_QSTR_events),		(mp_obj_t)&machine_timer_events_obj },
-    { MP_ROM_QSTR(MP_QSTR_reshot),		(mp_obj_t)&machine_timer_shot_obj },
+    { MP_ROM_QSTR(MP_QSTR_reshoot),		(mp_obj_t)&machine_timer_shot_obj },
     { MP_ROM_QSTR(MP_QSTR_start),		(mp_obj_t)&machine_timer_start_obj },
     { MP_ROM_QSTR(MP_QSTR_stop),		(mp_obj_t)&machine_timer_pause_obj },
     { MP_ROM_QSTR(MP_QSTR_pause),		(mp_obj_t)&machine_timer_pause_obj },

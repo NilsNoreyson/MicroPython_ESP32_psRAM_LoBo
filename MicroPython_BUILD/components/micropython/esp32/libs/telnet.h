@@ -1,16 +1,9 @@
 /*
- * This file is based on 'telnet' from Pycom Limited.
- *
- * Author: LoBo, https://loboris@github.com, loboris@gmail.com
- * Copyright (c) 2017, LoBo
- */
-
-/*
- * This file is part of the MicroPython project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2016 Damien P. George on behalf of Pycom Ltd
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +22,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ */
+/*
+ * This file is based on 'telnet' from Pycom Limited.
+ *
+ * Author: LoBo, loboris@gmail.com
+ * Copyright (c) 2017, LoBo
  */
 
 #ifndef TELNET_H_
@@ -80,6 +79,7 @@ bool telnet_isenabled (void);
 bool telnet_reset (void);
 int telnet_getstate();
 bool telnet_terminate (void);
+bool telnet_stop_requested();
 int32_t telnet_get_maxstack (void);
 
 #endif

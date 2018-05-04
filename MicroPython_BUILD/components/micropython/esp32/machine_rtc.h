@@ -1,11 +1,11 @@
 /*
- * This file is part of the Micro Python project, http://micropython.org/
+ * This file is part of the MicroPython ESP32 project, https://github.com/loboris/MicroPython_ESP32_psRAM_LoBo
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2013 2014 Damien P. George
  * Copyright (c) 2015 Daniel Campora
- * Copyright (c) 2017 Boris Lovosevic
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,19 +29,11 @@
 #ifndef MACHRTC_H_
 #define MACHRTC_H_
 
+extern char mpy_time_zone[64];
 extern const mp_obj_type_t mach_rtc_type;
-
-typedef struct {
-    uint64_t ext1_pins;
-    int8_t ext0_pin;
-    bool wake_on_touch : 1;
-    bool ext0_level : 1;
-    bool ext1_level : 1;
-} machine_rtc_config_t;
-
-
 extern xSemaphoreHandle sntp_mutex;
 
 void rtc_init0(void);
+void tz_fromto_NVS(char *gettzs, char *settzs);
 
 #endif // MACHRTC_H_

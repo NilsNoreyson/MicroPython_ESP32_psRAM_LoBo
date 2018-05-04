@@ -4,6 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -55,18 +56,22 @@
 #endif
 
 #if MPZ_DIG_SIZE > 16
+#define MPZ_DBL_DIG_SIZE (64)
 typedef uint32_t mpz_dig_t;
 typedef uint64_t mpz_dbl_dig_t;
 typedef int64_t mpz_dbl_dig_signed_t;
 #elif MPZ_DIG_SIZE > 8
+#define MPZ_DBL_DIG_SIZE (32)
 typedef uint16_t mpz_dig_t;
 typedef uint32_t mpz_dbl_dig_t;
 typedef int32_t mpz_dbl_dig_signed_t;
 #elif MPZ_DIG_SIZE > 4
+#define MPZ_DBL_DIG_SIZE (16)
 typedef uint8_t mpz_dig_t;
 typedef uint16_t mpz_dbl_dig_t;
 typedef int16_t mpz_dbl_dig_signed_t;
 #else
+#define MPZ_DBL_DIG_SIZE (8)
 typedef uint8_t mpz_dig_t;
 typedef uint8_t mpz_dbl_dig_t;
 typedef int8_t mpz_dbl_dig_signed_t;

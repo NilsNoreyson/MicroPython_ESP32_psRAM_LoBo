@@ -4,6 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2016 Damien P. George on behalf of Pycom Ltd
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -35,13 +36,11 @@
 #include "py/mpthread.h"
 #include "mphalport.h"
 
-extern TaskHandle_t MainTaskHandle;
-
 
 /****************************************************************/
 // _thread module
 
-STATIC size_t thread_stack_size = MP_THREAD_DEFAULT_STACK_SIZE;
+size_t thread_stack_size = MP_THREAD_DEFAULT_STACK_SIZE;
 
 //--------------------------------------------------------------------------
 STATIC mp_obj_t mod_thread_stack_size(size_t n_args, const mp_obj_t *args) {
@@ -77,8 +76,8 @@ typedef struct _thread_entry_args_t {
     mp_obj_t args[];
 } thread_entry_args_t;
 
-//--------------------------------------
-STATIC void *thread_entry(void *args_in)
+//-------------------------------
+void *thread_entry(void *args_in)
 {
     // Execution begins here for a new thread.  We do not have the GIL.
 
@@ -96,7 +95,13 @@ STATIC void *thread_entry(void *args_in)
 
     MP_THREAD_GIL_ENTER();
 
-    // signal that we are set up and running
+	#if MICROPY_ENABLE_PYSTACK
+	// TODO threading and pystack is not fully supported, for now just make a small stack
+	mp_obj_t mini_pystack[128];
+	mp_pystack_init(mini_pystack, &mini_pystack[128]);
+	#endif
+
+	// signal that we are set up and running
     mp_thread_start();
 
     // TODO set more thread-specific state here:
@@ -305,9 +310,15 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(mod_thread_isnotified_obj, mod_thread_isnotifie
 
 //--------------------------------------
 STATIC mp_obj_t mod_thread_getREPLId() {
-    return mp_obj_new_int_from_uint((uintptr_t)MainTaskHandle);
+    return mp_obj_new_int_from_uint((uintptr_t)ReplTaskHandle);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_getREPLId_obj, mod_thread_getREPLId);
+
+//--------------------------------------
+STATIC mp_obj_t mod_thread_getMAINId() {
+    return mp_obj_new_int_from_uint((uintptr_t)MainTaskHandle);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_getMAINId_obj, mod_thread_getMAINId);
 
 //--------------------------------------
 STATIC mp_obj_t mod_thread_getnotify() {
@@ -376,7 +387,7 @@ STATIC mp_obj_t mod_thread_getmsg()
 	}
 	else if (res == THREAD_MSG_TYPE_STRING) {
 		if (buf != NULL) {
-			tuple[2] = mp_obj_new_str((char *)buf, buflen, false);
+			tuple[2] = mp_obj_new_str((char *)buf, buflen);
 			free(buf);
 		}
 		else tuple[2] = mp_const_none;
@@ -395,7 +406,7 @@ STATIC mp_obj_t mod_thread_getname(mp_obj_t in_id) {
 	if (!res) {
 		sprintf(name,"unknown");
 	}
-	return mp_obj_new_str((char *)name, strlen(name), false);
+	return mp_obj_new_str((char *)name, strlen(name));
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(mod_thread_getname_obj, mod_thread_getname);
 
@@ -407,9 +418,12 @@ STATIC mp_obj_t mod_thread_getSelfname() {
 	if (!res) {
 		sprintf(name,"unknown");
 	}
-	return mp_obj_new_str((char *)name, strlen(name), false);
+	return mp_obj_new_str((char *)name, strlen(name));
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_getSelfname_obj, mod_thread_getSelfname);
+
+extern TaskHandle_t TelnetTaskHandle;
+extern TaskHandle_t FtpTaskHandle;
 
 //-----------------------------------------------------------------------
 STATIC mp_obj_t mod_thread_list(mp_uint_t n_args, const mp_obj_t *args) {
@@ -429,6 +443,7 @@ STATIC mp_obj_t mod_thread_list(mp_uint_t n_args, const mp_obj_t *args) {
 			char th_type[8] = {'\0'};
 			char th_state[16] = {'\0'};
 			if (thr->type == THREAD_TYPE_MAIN) sprintf(th_type, "MAIN");
+			else if (thr->type == THREAD_TYPE_REPL) sprintf(th_type, "REPL");
 			else if (thr->type == THREAD_TYPE_PYTHON) sprintf(th_type, "PYTHON");
 			else if (thr->type == THREAD_TYPE_SERVICE) sprintf(th_type, "SERVICE");
 			else sprintf(th_type, "Unknown");
@@ -441,16 +456,36 @@ STATIC mp_obj_t mod_thread_list(mp_uint_t n_args, const mp_obj_t *args) {
 					thr->stack_max, th_type);
 		}
 		free(list.threads);
+		#ifdef CONFIG_MICROPY_USE_TELNET
+		if (TelnetTaskHandle) {
+			mp_printf(&mp_plat_print, "ID=%u, Name: Telnet, Stack=%d, MaxUsed=%d, Type: SERVICE\n",
+					TelnetTaskHandle, TELNET_STACK_LEN, TELNET_STACK_LEN - uxTaskGetStackHighWaterMark(TelnetTaskHandle));
+		}
+		#endif
+
+		#ifdef CONFIG_MICROPY_USE_FTPSERVER
+		if (FtpTaskHandle) {
+			mp_printf(&mp_plat_print, "ID=%u, Name: Ftp, Stack=%d, MaxUsed=%d, Type: SERVICE\n",
+					FtpTaskHandle, FTP_STACK_LEN, FTP_STACK_LEN - uxTaskGetStackHighWaterMark(FtpTaskHandle));
+		}
+		#endif
 		return mp_const_none;
 	}
 	else {
+		int services = 0;
+		#ifdef CONFIG_MICROPY_USE_TELNET
+		if (TelnetTaskHandle) services++;
+		#endif
+		#ifdef CONFIG_MICROPY_USE_FTPSERVER
+		if (FtpTaskHandle) services++;
+		#endif
 		mp_obj_t thr_info[6];
-		mp_obj_t tuple[num];
+		mp_obj_t tuple[num+services];
 		for (n=0; n<num; n++) {
 			thr = list.threads + (sizeof(threadlistitem_t) * n);
 			thr_info[0] = mp_obj_new_int(thr->id);
 			thr_info[1] = mp_obj_new_int(thr->type);
-			thr_info[2] = mp_obj_new_str(thr->name, strlen(thr->name), false);
+			thr_info[2] = mp_obj_new_str(thr->name, strlen(thr->name));
 			if (thr->suspended) thr_info[3] = mp_obj_new_int(1);
 			else if (thr->waiting) thr_info[3] = mp_obj_new_int(2);
 			else thr_info[3] = mp_obj_new_int(0);
@@ -459,6 +494,30 @@ STATIC mp_obj_t mod_thread_list(mp_uint_t n_args, const mp_obj_t *args) {
 			tuple[n] = mp_obj_new_tuple(6, thr_info);
 		}
 		free(list.threads);
+		#ifdef CONFIG_MICROPY_USE_TELNET
+		if (TelnetTaskHandle) {
+			thr_info[0] = mp_obj_new_int((int)TelnetTaskHandle);
+			thr_info[1] = mp_obj_new_int(THREAD_TYPE_SERVICE);
+			thr_info[2] = mp_obj_new_str("Telnet", 6);
+			thr_info[3] = mp_obj_new_int(0);
+			thr_info[4] = mp_obj_new_int(TELNET_STACK_LEN);
+			thr_info[5] = mp_obj_new_int(TELNET_STACK_LEN - uxTaskGetStackHighWaterMark(TelnetTaskHandle));
+			tuple[n] = mp_obj_new_tuple(6, thr_info);
+			n++;
+		}
+		#endif
+		#ifdef CONFIG_MICROPY_USE_FTPSERVER
+		if (FtpTaskHandle) {
+			thr_info[0] = mp_obj_new_int((int)FtpTaskHandle);
+			thr_info[1] = mp_obj_new_int(THREAD_TYPE_SERVICE);
+			thr_info[2] = mp_obj_new_str("Ftp", 3);
+			thr_info[3] = mp_obj_new_int(0);
+			thr_info[4] = mp_obj_new_int(FTP_STACK_LEN);
+			thr_info[5] = mp_obj_new_int(FTP_STACK_LEN - uxTaskGetStackHighWaterMark(FtpTaskHandle));
+			tuple[n] = mp_obj_new_tuple(6, thr_info);
+			n++;
+		}
+		#endif
 
 		return mp_obj_new_tuple(n, tuple);
 	}
@@ -477,6 +536,19 @@ STATIC mp_obj_t mod_thread_replAcceptMsg(mp_uint_t n_args, const mp_obj_t *args)
 	return mp_obj_new_bool(res);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_thread_replAcceptMsg_obj, 0, 1, mod_thread_replAcceptMsg);
+
+//--------------------------------------------------------------------------------
+STATIC mp_obj_t mod_thread_mainAcceptMsg(mp_uint_t n_args, const mp_obj_t *args) {
+	int res = 0;
+    if (n_args == 0) {
+    	res = mp_thread_mainAcceptMsg(-1);
+    }
+    else {
+    	res = mp_thread_mainAcceptMsg(mp_obj_is_true(args[0]));
+    }
+	return mp_obj_new_bool(res);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_thread_mainAcceptMsg_obj, 0, 1, mod_thread_mainAcceptMsg);
 
 //-----------------------------------------------------------------------------
 STATIC mp_obj_t mod_thread_waitnotify(mp_uint_t n_args, const mp_obj_t *args) {
@@ -534,7 +606,9 @@ STATIC const mp_rom_map_elem_t mp_module_thread_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_getnotification),		MP_ROM_PTR(&mod_thread_getnotify_obj) },
     { MP_ROM_QSTR(MP_QSTR_isnotified),			MP_ROM_PTR(&mod_thread_isnotified_obj) },
     { MP_ROM_QSTR(MP_QSTR_getReplID),			MP_ROM_PTR(&mod_thread_getREPLId_obj) },
+    { MP_ROM_QSTR(MP_QSTR_getMainID),			MP_ROM_PTR(&mod_thread_getMAINId_obj) },
     { MP_ROM_QSTR(MP_QSTR_replAcceptMsg),		MP_ROM_PTR(&mod_thread_replAcceptMsg_obj) },
+    { MP_ROM_QSTR(MP_QSTR_mainAcceptMsg),		MP_ROM_PTR(&mod_thread_mainAcceptMsg_obj) },
     { MP_ROM_QSTR(MP_QSTR_sendmsg),				MP_ROM_PTR(&mod_thread_sendmsg_obj) },
     { MP_ROM_QSTR(MP_QSTR_getmsg),				MP_ROM_PTR(&mod_thread_getmsg_obj) },
     { MP_ROM_QSTR(MP_QSTR_list),				MP_ROM_PTR(&mod_thread_list_obj) },
@@ -554,9 +628,9 @@ STATIC const mp_rom_map_elem_t mp_module_thread_globals_table[] = {
 	{ MP_ROM_QSTR(MP_QSTR_STATUS),				MP_ROM_INT(THREAD_NOTIFY_STATUS) },
 
 	{ MP_ROM_QSTR(MP_QSTR_RUNNING),				MP_ROM_INT(THREAD_STATUS_RUNNING) },
-	{ MP_ROM_QSTR(MP_QSTR_SUSPENDED),			MP_ROM_INT(THREAD_STATUS_RUNNING) },
-	{ MP_ROM_QSTR(MP_QSTR_WAITING),				MP_ROM_INT(THREAD_STATUS_RUNNING) },
-	{ MP_ROM_QSTR(MP_QSTR_TERMINATED),			MP_ROM_INT(THREAD_STATUS_RUNNING) },
+	{ MP_ROM_QSTR(MP_QSTR_SUSPENDED),			MP_ROM_INT(THREAD_STATUS_SUSPENDED) },
+	{ MP_ROM_QSTR(MP_QSTR_WAITING),				MP_ROM_INT(THREAD_STATUS_WAITING) },
+	{ MP_ROM_QSTR(MP_QSTR_TERMINATED),			MP_ROM_INT(THREAD_STATUS_TERMINATED) },
 };
 STATIC MP_DEFINE_CONST_DICT(mp_module_thread_globals, mp_module_thread_globals_table);
 

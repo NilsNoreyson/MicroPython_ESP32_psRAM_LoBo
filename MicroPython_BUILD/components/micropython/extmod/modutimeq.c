@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2014 Damien P. George
  * Copyright (c) 2016-2017 Paul Sokolovsky
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,10 +38,10 @@
 
 #define DEBUG 0
 
-// the algorithm here is modeled on CPython's heapq.py
+// the algorithm here is modelled on CPython's heapq.py
 
 struct qentry {
-    mp_uint_t time;
+    uint64_t time;
     mp_uint_t id;
     mp_obj_t callback;
     mp_obj_t args;
@@ -130,12 +131,12 @@ STATIC mp_obj_t mod_utimeq_heappush(size_t n_args, const mp_obj_t *args) {
         mp_raise_msg(&mp_type_IndexError, "queue overflow");
     }
     mp_uint_t l = heap->len;
-    mp_uint_t itime;
+    uint64_t itime;
     if (mp_obj_is_float(args[1])) {
     	mp_float_t time = mp_obj_float_get(args[1]);
-        itime = (uint32_t)time;
+        itime = (uint64_t)time;
     }
-    else itime = mp_obj_get_int(args[1]);
+    else itime = mp_obj_get_int64(args[1]);
 
     heap->items[l].time = itime;
     heap->items[l].id = utimeq_id++;
