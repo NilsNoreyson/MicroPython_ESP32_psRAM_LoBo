@@ -170,8 +170,14 @@ wake_up:
 	ld r1 , r1, 0
 	add r0, r0,r1
 	
-	//jumpr exit, 1000, ge
-	//jumpr exit, 10, lt
+
+	//correction for offset
+	//with the tested module it was alwasy around -90
+	//i don't know how negative numbers are handelb in ulp space so just bring it to normal numbers
+	add r0, r0, 90
+
+	jumpr exit, 1000, ge
+	jumpr exit, 10, lt
 	move r1, offset
 	st r0, r1, 0
 
@@ -181,5 +187,5 @@ wake_up:
 	/* Wake up the SoC and stop ULP program */
 	wake
 	/* Stop the wakeup timer so it does not restart ULP */
-	//WRITE_RTC_FIELD(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN, 0)
+	WRITE_RTC_FIELD(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN, 0)
 	halt

@@ -121,7 +121,9 @@ static void init_ulp_program()
     /* Set ULP wake up period to 3 S */
     //ulp_set_wakeup_period(0, 3*1000*1000);
     ulp_set_wakeup_period(0, 3*1000);
-    ESP_ERROR_CHECK( ulp_run((&ulp_entry - RTC_SLOW_MEM) / sizeof(uint32_t)));
+
+    err = ulp_run((&ulp_entry - RTC_SLOW_MEM) / sizeof(uint32_t));
+    ESP_ERROR_CHECK(err);
 }
 
 static void print_hall_sensor()
