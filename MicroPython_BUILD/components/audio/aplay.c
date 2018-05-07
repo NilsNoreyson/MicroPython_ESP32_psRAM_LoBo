@@ -7,10 +7,10 @@
 #include "hal_i2s.h"
 #include "aplay.h"
 #include <sys/stat.h>
-#ifdef CONFIG_AUDIO_MAD
+//#ifdef CONFIG_AUDIO_MAD
 #define MAINBUF_SIZE 2889
 #include "mad.h"
-#endif
+//#endif
 #ifdef CONFIG_AUDIO_HELIX
 #include "mp3dec.h"
 #endif
@@ -160,7 +160,7 @@ void aplay_mp3(char *path)
 		ESP_LOGI(TAG,"end mp3 decode ..");
 }
 #endif
-#ifdef CONFIG_AUDIO_MAD
+//#ifdef CONFIG_AUDIO_MAD
 typedef struct  
 {  
 		FILE* fp;  
@@ -313,7 +313,7 @@ void render_sample_block(short *short_sample_buff, int no_samples)
 	}
     return;
 }
-#endif
+//#endif
 
 
 // static enum mad_flow input_func(void *data, struct mad_stream *stream);

@@ -7,7 +7,7 @@
 COMPONENT_ADD_INCLUDEDIRS := .  genhdr py esp32 lib lib/utils lib/mp-readline extmod extmod/crypto-algorithms lib/netutils drivers/dht \
 							 lib/timeutils  lib/berkeley-db-1.xx/include lib/berkeley-db-1.xx/btree \
 							 lib/berkeley-db-1.xx/db lib/berkeley-db-1.xx/hash lib/berkeley-db-1.xx/man lib/berkeley-db-1.xx/mpool lib/berkeley-db-1.xx/recno \
-							 ../curl/include ../curl/lib ../zlib ../libssh2/include ../espmqtt/include ../littlefs
+							 ../curl/include ../curl/lib ../zlib ../libssh2/include ../espmqtt/include ../littlefs ../mad/include ../bsp/include  ../audio/include
 
 COMPONENT_PRIV_INCLUDEDIRS := .  genhdr py esp32 lib
 
@@ -49,6 +49,10 @@ MP_EXTRA_INC += -I$(PROJECT_PATH)/components/curl/include
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/libssh2/include
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/zlib
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/espmqtt/include
+MP_EXTRA_INC += -I$(PROJECT_PATH)/components/bsp/include
+MP_EXTRA_INC += -I$(PROJECT_PATH)/components/mad/include
+MP_EXTRA_INC += -I$(PROJECT_PATH)/components/hal/include
+MP_EXTRA_INC += -I$(PROJECT_PATH)/components/audio/include
 MP_EXTRA_INC += -I$(PROJECT_PATH)/components/littlefs
 MP_EXTRA_INC += -I$(COMPONENT_PATH)/py
 MP_EXTRA_INC += -I$(COMPONENT_PATH)/lib/mp-readline

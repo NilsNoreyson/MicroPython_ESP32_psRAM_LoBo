@@ -243,6 +243,7 @@ extern const struct _mp_obj_module_t mp_module_machine;
 extern const struct _mp_obj_module_t mp_module_network;
 extern const struct _mp_obj_module_t mp_module_ymodem;
 extern const struct _mp_obj_module_t mp_module_mymodule;
+extern const struct _mp_obj_module_t mp_module_musichead;
 
 
 #ifdef CONFIG_MICROPY_USE_CURL
@@ -296,6 +297,7 @@ extern const struct _mp_obj_module_t mp_module_bluetooth;
     { MP_OBJ_NEW_QSTR(MP_QSTR_ymodem),   (mp_obj_t)&mp_module_ymodem }, \
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_uhashlib), (mp_obj_t)&mp_module_uhashlib }, \
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_mymodule), (mp_obj_t)&mp_module_mymodule }, \
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_musichead), (mp_obj_t)&mp_module_musichead }, \
 	BUILTIN_MODULE_DISPLAY \
 	BUILTIN_MODULE_CURL \
 	BUILTIN_MODULE_SSH \

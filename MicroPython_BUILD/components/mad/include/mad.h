@@ -23,7 +23,7 @@
 #define MAD_H
 
 
-#ifdef CONFIG_AUDIO_MAD
+//#ifdef CONFIG_AUDIO_MAD
 
 # ifdef __cplusplus
 extern "C" {
@@ -974,6 +974,6 @@ int mad_decoder_message(struct mad_decoder *, void *, unsigned int *);
 
 #error Not enable the mad lib, make menuconfig to enable it
 
-#endif
+//#endif
 
 #endif
