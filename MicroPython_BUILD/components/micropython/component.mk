@@ -169,6 +169,7 @@ SRC_C =  $(addprefix esp32/,\
 	machine_dht.c \
 	machine_ow.c \
 	mymodule.c \
+	musichead.c \
 	)
 
 ifdef CONFIG_MICROPY_USE_DISPLAY
