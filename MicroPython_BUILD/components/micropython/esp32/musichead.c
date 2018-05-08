@@ -80,6 +80,7 @@ void init_music()
     WM8978_EQ4_Set(0,12);
     WM8978_EQ5_Set(0,12);
     /*init sd card*/
+    /*
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -97,20 +98,26 @@ void init_music()
         return;
     }
     sdmmc_card_print_info(stdout, card);
+    */
     /*print ram info*/
-    size_t free8start=heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    size_t free32start=heap_caps_get_free_size(MALLOC_CAP_32BIT);
-    ESP_LOGI(TAG,"free mem8bit: %d mem32bit: %d\n",free8start,free32start);
 }
 
 void play_mp3_tread(char*filename){
-	aplay_mp3(filename);
+	printf(filename);
+    char file_name[128]; // The filename buffer.
+
+    char buffer[128]; // The filename buffer.
+    // Put "file" then k then ".txt" in to filename.
+    snprintf(buffer, sizeof(char) * 64, "/_#!#_sdcard/%s", filename);
+    aplay_mp3(buffer);
+    printf("%s", buffer);
+	//aplay_mp3(filename);
 	vTaskDelete(NULL);
 }
 
 void play_music(char *filename){
 
-		printf(filename);
+		printf("Starting play-tread.");
 
 		PLAY_AUDIO=1;
 		//filename = "/sdcard/music.mp3";
@@ -141,26 +148,26 @@ STATIC mp_obj_t musichead_stop(void) {
 }
 MP_DEFINE_CONST_FUN_OBJ_0(musichead_stop_obj, musichead_stop);
 
-STATIC mp_obj_t musichead_play(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args, uint8_t type) {
-	enum {ARG_filename};
-	const mp_arg_t allowed_args[] = {
-        { MP_QSTR_filename,  	MP_ARG_REQUIRED | MP_ARG_OBJ, { .u_obj = mp_const_none } },
-	};
+STATIC mp_obj_t musichead_play(mp_obj_t mp3_path) {
 
-    mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
-    mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
-    char *filename = NULL;
+    const char *filename = mp_obj_str_get_str(mp3_path);
 
-	filename = (char *)mp_obj_str_get_str(args[ARG_filename].u_obj);
 
-	printf('wassss');
-	printf(filename);
+	printf("wassss\n");
+	printf("%s",filename);
 
-	play_music(*filename);
+	play_music(filename);
     return mp_const_none;
 }
 
-MP_DEFINE_CONST_FUN_OBJ_KW(musichead_play_obj,1, musichead_play);
+MP_DEFINE_CONST_FUN_OBJ_1(musichead_play_obj, musichead_play);
+
+STATIC mp_obj_t musichead_vol(mp_obj_t vol) {
+    int hpvol =  mp_obj_get_int(vol);
+	WM8978_HPvol_Set(hpvol,hpvol);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(musichead_vol_obj, musichead_vol);
 
 
 STATIC const mp_map_elem_t musichead_globals_table[] = {
@@ -168,6 +175,7 @@ STATIC const mp_map_elem_t musichead_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_init), (mp_obj_t)&musichead_init_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&musichead_stop_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_play), (mp_obj_t)&musichead_play_obj},
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_vol), (mp_obj_t)&musichead_vol_obj},
 };
 
 STATIC MP_DEFINE_CONST_DICT (
