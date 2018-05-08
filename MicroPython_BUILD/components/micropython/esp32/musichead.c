@@ -110,8 +110,8 @@ void play_mp3_tread(char*filename){
     // Put "file" then k then ".txt" in to filename.
     snprintf(buffer, sizeof(char) * 64, "/_#!#_sdcard/%s", filename);
     aplay_mp3(buffer);
-    printf("%s", buffer);
 	//aplay_mp3(filename);
+    PLAY_AUDIO=0;
 	vTaskDelete(NULL);
 }
 
@@ -148,6 +148,12 @@ STATIC mp_obj_t musichead_stop(void) {
 }
 MP_DEFINE_CONST_FUN_OBJ_0(musichead_stop_obj, musichead_stop);
 
+
+STATIC mp_obj_t musichead_playstate(void) {
+	return MP_OBJ_NEW_SMALL_INT(PLAY_AUDIO);
+}
+MP_DEFINE_CONST_FUN_OBJ_0(musichead_playstate_obj, musichead_playstate);
+
 STATIC mp_obj_t musichead_play(mp_obj_t mp3_path) {
 
     const char *filename = mp_obj_str_get_str(mp3_path);
@@ -176,6 +182,7 @@ STATIC const mp_map_elem_t musichead_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&musichead_stop_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_play), (mp_obj_t)&musichead_play_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_vol), (mp_obj_t)&musichead_vol_obj},
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_state), (mp_obj_t)&musichead_playstate_obj},
 };
 
 STATIC MP_DEFINE_CONST_DICT (

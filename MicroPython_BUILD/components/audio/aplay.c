@@ -274,6 +274,7 @@ void aplay_mp3(char*filename){
 			mad_synth_frame(synth,frame);
 		}
 	}
+	PLAY_AUDIO=0;
 	i2s_zero_dma_buffer(0);
 	ESP_LOGI(TAG,"end mp3 decode ..");
 	free(synth);
