@@ -7,6 +7,7 @@
 #include "hal_i2s.h"
 #include "aplay.h"
 #include <sys/stat.h>
+
 //#ifdef CONFIG_AUDIO_MAD
 #define MAINBUF_SIZE 2889
 #include "mad.h"
@@ -16,6 +17,8 @@
 #endif
 
 #define TAG "aplay"
+
+int PLAY_AUDIO=1;
 
 struct file_bufer {
 	unsigned char *buf;
@@ -257,6 +260,9 @@ void aplay_mp3(char*filename){
 	while (1){    
 		if(input(&fb,stream)==MAD_FLOW_STOP)
 			break;
+		if (PLAY_AUDIO==0){
+			break;
+		}
 		while(1){
 			ret=mad_frame_decode(frame,stream);
 			if(ret==-1){

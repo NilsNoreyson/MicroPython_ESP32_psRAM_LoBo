@@ -41,10 +41,15 @@
 
 #define TAG "musichead:"
 
+//int PLAY_AUDIO = 1;
+
 #define GPIO_OUTPUT_IO_0    5
 #define GPIO_OUTPUT_PIN_SEL  ((1<<GPIO_OUTPUT_IO_0))
 
-void play_music()
+
+
+
+void init_music()
 {
     esp_err_t err;
     /*init gpio*/
@@ -96,25 +101,72 @@ void play_music()
     size_t free8start=heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t free32start=heap_caps_get_free_size(MALLOC_CAP_32BIT);
     ESP_LOGI(TAG,"free mem8bit: %d mem32bit: %d\n",free8start,free32start);
+}
 
-    uint8_t cnt=0;
-    while(1){
-        gpio_set_level(GPIO_OUTPUT_IO_0, cnt%2);
-        aplay_mp3("/sdcard/music.mp3");
-        aplay_wav("/sdcard/music.wav");
-        cnt++;
-    }
+void play_mp3_tread(char*filename){
+	aplay_mp3(filename);
+	vTaskDelete(NULL);
+}
+
+void play_music(char *filename){
+
+		printf(filename);
+
+		PLAY_AUDIO=1;
+		//filename = "/sdcard/music.mp3";
+		TaskHandle_t xHandle = NULL;
+		xTaskCreatePinnedToCore(&play_mp3_tread, "play_audio", 16384, filename, 20, &xHandle,0);
+		//aplay_mp3("/sdcard/music.mp3");
+
+}
+
+void stop_music(){
+
+	PLAY_AUDIO=0;
+
 }
 
 
-STATIC mp_obj_t musichead_play(void) {
-	play_music();
+
+STATIC mp_obj_t musichead_init(void) {
+	init_music();
     return mp_const_none;
 }
-MP_DEFINE_CONST_FUN_OBJ_0(musichead_play_obj, musichead_play);
+MP_DEFINE_CONST_FUN_OBJ_0(musichead_init_obj, musichead_init);
+
+
+STATIC mp_obj_t musichead_stop(void) {
+	stop_music();
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(musichead_stop_obj, musichead_stop);
+
+STATIC mp_obj_t musichead_play(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args, uint8_t type) {
+	enum {ARG_filename};
+	const mp_arg_t allowed_args[] = {
+        { MP_QSTR_filename,  	MP_ARG_REQUIRED | MP_ARG_OBJ, { .u_obj = mp_const_none } },
+	};
+
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
+    mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
+    char *filename = NULL;
+
+	filename = (char *)mp_obj_str_get_str(args[ARG_filename].u_obj);
+
+	printf('wassss');
+	printf(filename);
+
+	play_music(*filename);
+    return mp_const_none;
+}
+
+MP_DEFINE_CONST_FUN_OBJ_KW(musichead_play_obj,1, musichead_play);
+
 
 STATIC const mp_map_elem_t musichead_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_musichead) },
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_init), (mp_obj_t)&musichead_init_obj},
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_stop), (mp_obj_t)&musichead_stop_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_play), (mp_obj_t)&musichead_play_obj},
 };
 

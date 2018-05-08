@@ -23,6 +23,7 @@ typedef struct
 
 void aplay_wav(char* filename);
 void aplay_mp3(char* filename);
+extern int PLAY_AUDIO;
 
  #endif
 
