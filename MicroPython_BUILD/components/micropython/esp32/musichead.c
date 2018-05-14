@@ -67,7 +67,7 @@ void init_music()
     WM8978_Init();
     WM8978_ADDA_Cfg(1,1);
     WM8978_Input_Cfg(1,0,0);
-    WM8978_Output_Cfg(1,0);
+    WM8978_Output_Cfg(1,1);
     WM8978_MIC_Gain(25);
     WM8978_AUX_Gain(0);
     WM8978_LINEIN_Gain(0);
@@ -176,6 +176,21 @@ STATIC mp_obj_t musichead_vol(mp_obj_t vol) {
 MP_DEFINE_CONST_FUN_OBJ_1(musichead_vol_obj, musichead_vol);
 
 
+STATIC mp_obj_t musichead_mic(mp_obj_t byp) {
+    int byp_int =  mp_obj_get_int(byp);
+    WM8978_Output_Cfg(1,byp_int);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(musichead_mic_obj, musichead_mic);
+
+STATIC mp_obj_t musichead_micgain(mp_obj_t gain) {
+    int gain_int =  mp_obj_get_int(gain);
+    WM8978_MIC_Gain(gain_int);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(musichead_micgain_obj, musichead_micgain);
+
+
 STATIC const mp_map_elem_t musichead_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR___name__), MP_OBJ_NEW_QSTR(MP_QSTR_musichead) },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_init), (mp_obj_t)&musichead_init_obj},
@@ -183,6 +198,8 @@ STATIC const mp_map_elem_t musichead_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_play), (mp_obj_t)&musichead_play_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_vol), (mp_obj_t)&musichead_vol_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_state), (mp_obj_t)&musichead_playstate_obj},
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_mic), (mp_obj_t)&musichead_mic_obj},
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_micgain), (mp_obj_t)&musichead_micgain_obj},
 };
 
 STATIC MP_DEFINE_CONST_DICT (
