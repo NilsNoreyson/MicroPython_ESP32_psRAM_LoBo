@@ -62,8 +62,9 @@ void init_music()
     gpio_config(&io_conf);
     gpio_set_level(GPIO_OUTPUT_IO_0, 1);
     /*init codec */
+    const int sample_rate = 44100;
     hal_i2c_init(0,19,18);
-    hal_i2s_init(0,48000,16,2);
+    hal_i2s_init(0,sample_rate,16,2);
     WM8978_Init();
     WM8978_ADDA_Cfg(1,1);
     WM8978_Input_Cfg(1,0,0);
@@ -79,6 +80,35 @@ void init_music()
     WM8978_EQ3_Set(0,12);
     WM8978_EQ4_Set(0,12);
     WM8978_EQ5_Set(0,12);
+
+
+
+
+
+     /* RX: I2S_NUM_1 */
+     i2s_config_t i2s_config_rx = {
+    .mode = I2S_MODE_MASTER | I2S_MODE_RX, // Only TX
+    .sample_rate = sample_rate,
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,    // Only 8-bit DAC support
+    .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,   // 2-channels
+    .communication_format = I2S_COMM_FORMAT_I2S_MSB,
+    .dma_buf_count = 32,                            // number of buffers, 128 max.
+    .dma_buf_len = 32 * 2,                          // size of each buffer
+    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1        // Interrupt level 1
+    };
+
+    i2s_pin_config_t pin_config_rx = {
+       .bck_io_num = GPIO_NUM_23,
+       .ws_io_num = GPIO_NUM_32,
+       .data_out_num = I2S_PIN_NO_CHANGE,
+       .data_in_num = GPIO_NUM_35
+    };
+
+    i2s_driver_install(I2S_NUM_1, &i2s_config_rx, 0, NULL);
+    i2s_set_pin(I2S_NUM_1, &pin_config_rx);
+
+
+
     /*init sd card*/
     /*
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();

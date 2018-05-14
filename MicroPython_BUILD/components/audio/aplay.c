@@ -307,6 +307,43 @@ static inline signed int scale(mad_fixed_t sample)
   /* quantize */
   return sample >> (MAD_F_FRACBITS + 1 - 16);
 }
+
+
+void pipe_mic()
+   {
+      uint16_t buf_len = 8;
+   	  char buf[8] = "abcdefgh";
+
+   	  int audio = 0;
+
+      char *buf_ptr_read = buf;
+      char *buf_ptr_write = buf;
+
+      // read whole block of samples
+      int bytes_read = 0;
+      while(bytes_read == 0) {
+         bytes_read = i2s_read_bytes(I2S_NUM_1, buf, buf_len, 0);
+      }
+
+     audio = (buf_ptr_read[2]+(buf_ptr_read[3]<<8))*8;
+
+     //left
+     buf_ptr_write[0] = audio&0xFF; // mid
+     buf_ptr_write[1] = (audio>>8)&0xFF; // high
+
+
+     // right
+     buf_ptr_write[2] = buf_ptr_write[0]; // mid
+     buf_ptr_write[3] = buf_ptr_write[1]; // high
+
+
+
+      i2s_write_bytes(I2S_NUM_0, buf, 4, 1000 / portTICK_RATE_MS);
+
+   }
+
+
+
 void render_sample_block(short *short_sample_buff, int no_samples)
 {
 	// uint32_t len=no_samples*4;
@@ -316,10 +353,16 @@ void render_sample_block(short *short_sample_buff, int no_samples)
 		char buf[4];
 		memcpy(buf,&right,2);
 		memcpy(buf+2,&left,2);
-		i2s_write_bytes(0,buf, 4, 1000 / portTICK_RATE_MS);
+
+		pipe_mic();
+		//i2s_write_bytes(0,buf, 4, 1000 / portTICK_RATE_MS);
 	}
     return;
 }
+
+
+
+
 //#endif
 
 

@@ -75,7 +75,7 @@ int do_record = 1;
 int is_recording = 0;
 int threaded_task = 1;
 i2s_bits_per_sample_t bits_per_sample = 32;
-int sample_rate = 16000;
+int sample_rate = 44100;
 
 
 
@@ -97,6 +97,7 @@ static uint8_t example_broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xF
 static uint16_t s_example_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX] = { 0, 0 };
 
 static void example_espnow_deinit(example_espnow_send_param_t *send_param);
+
 
 static esp_err_t example_event_handler(void *ctx, system_event_t *event)
 {
@@ -634,6 +635,10 @@ static void enter_ulp_deepsleep()
 
 static void init_i2s()
 {
+	int i2s_num = 1;
+	int bck = 26;
+	int ws = 25;
+	int data_in = 23;
 
     /* RX: I2S_NUM_1 */
     i2s_config_t i2s_config_rx = {
@@ -648,14 +653,14 @@ static void init_i2s()
    };
 
    i2s_pin_config_t pin_config_rx = {
-      .bck_io_num = GPIO_NUM_26,
-      .ws_io_num = GPIO_NUM_25,
+      .bck_io_num = bck,
+      .ws_io_num = ws,
       .data_out_num = I2S_PIN_NO_CHANGE,
-      .data_in_num = GPIO_NUM_23
+      .data_in_num = data_in
    };
 
-   i2s_driver_install(I2S_NUM_0, &i2s_config_rx, 0, NULL);
-   i2s_set_pin(I2S_NUM_0, &pin_config_rx);
+   i2s_driver_install(i2s_num, &i2s_config_rx, 0, NULL);
+   i2s_set_pin(i2s_num, &pin_config_rx);
 
 }
 
