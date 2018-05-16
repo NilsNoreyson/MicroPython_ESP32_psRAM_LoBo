@@ -350,20 +350,25 @@ void render_sample_block(short *short_sample_buff, int no_samples)
 	char buf_mic[8] ;
 	int mic_audio = 0;
 	for(int i=0;i<no_samples;i++){
-	      int bytes_read = 0;
-	      while(bytes_read == 0) {
-	         bytes_read = i2s_read_bytes(I2S_NUM_1, buf_mic, 8, 0);
-	      }
+	      //int bytes_read = 0;
+	      //while(bytes_read == 0) {
+	      //   bytes_read = i2s_read_bytes(I2S_NUM_1, buf_mic, 8, 0);
+	      //}
 
 		short right=short_sample_buff[i];
 		short left=short_sample_buff[i];
 
-		mic_audio = (buf_mic[2]+(buf_mic[3]<<8))*8;
-		right = right/4+mic_audio;
-		left = left/4+mic_audio;
+		//mic_audio = (buf_mic[2]+(buf_mic[3]<<8))*8;
+		//right = right/16.0 ;//+mic_audio;
+		//left = left/16.0 ;//+mic_audio;
 
 
 		char buf[4];
+		//buf[0] =0;
+		//buf[1] =(right >> 8) & 0xff;
+		//buf[2] =0;
+		//buf[3] =(left >> 8) & 0xff;
+		//buf[3] =0;
 		memcpy(buf,&right,2);
 		memcpy(buf+2,&left,2);
 

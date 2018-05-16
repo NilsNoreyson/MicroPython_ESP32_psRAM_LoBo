@@ -62,7 +62,7 @@ void init_music()
     gpio_config(&io_conf);
     gpio_set_level(GPIO_OUTPUT_IO_0, 1);
     /*init codec */
-    const int sample_rate = 44100;
+    const int sample_rate = 48000;
     hal_i2c_init(0,19,18);
     hal_i2s_init(0,sample_rate,16,2);
     WM8978_Init();
