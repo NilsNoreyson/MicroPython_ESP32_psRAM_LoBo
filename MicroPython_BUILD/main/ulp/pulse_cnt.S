@@ -89,15 +89,20 @@ entry:
 
      p = machine.TouchPad(machine.Pin(33))
 
-    touch_counter machine.mem32[0x500000f8]
+    touch_counter
+    machine.mem32[0x50000130]&0x0000FFFF
     */
 
 
     //READ_RTC_FIELD(SENS_SAR_TOUCH_OUT5_REG, SENS_TOUCH_MEAS_OUT8)
-    READ_RTC_REG(0x3ff48800+0x0080,0,32)
+    and r2 , r2 , 0
+    add r2 , r2 ,5000
+    move r3, touch_counter
+    st r2, r3, 0
+
+    READ_RTC_REG(SENS_SAR_TOUCH_OUT5_REG,0,32)
     and r0, r0, 0x0000FFFF
-    move r2, touch_counter
-    st r0, r2, 0
+
 
     JUMPR touched, 500, LT
     JUMP pulsecheck
@@ -129,9 +134,26 @@ pulsecheck:
 	.global changed
 
 touched:
-	wake
-	jump pulsecheck
+	WAIT 1000
+	move r3, touch_counter
+    st r2, r3, 0
 
+	READ_RTC_REG(SENS_SAR_TOUCH_OUT5_REG,0,32)
+    and r0, r0, 0x0000FFFF
+
+
+
+	JUMPR pulsecheck, 500, GE
+	sub r2, r2,1
+	add r0, r2, 0
+	JUMPR touched, 1,ge
+	move r3, touch_counter
+	and r2 , r2 , 0
+    st r2, r3, 0
+
+
+	wake
+	JUMP pulsecheck
 
 changed:
     wake
@@ -144,6 +166,7 @@ changed:
 	/* Not yet. Decrement debounce_counter */
 	sub r2, r2, 1
 	st r2, r3, 0
+
 	/* End program */
 	halt
 
