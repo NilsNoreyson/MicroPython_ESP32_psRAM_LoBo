@@ -648,8 +648,8 @@ static void init_i2s()
    };
 
    i2s_pin_config_t pin_config_rx = {
-      .bck_io_num = GPIO_NUM_26,
-      .ws_io_num = GPIO_NUM_25,
+      .bck_io_num = GPIO_NUM_27,
+      .ws_io_num = GPIO_NUM_12,
       .data_out_num = I2S_PIN_NO_CHANGE,
       .data_in_num = GPIO_NUM_23
    };
