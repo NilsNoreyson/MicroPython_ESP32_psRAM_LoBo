@@ -32,6 +32,26 @@
 #include "rom/ets_sys.h"
 #include "sdkconfig.h"
 
+// ------------------------------------------------------------
+// For testing only, don't change unless you want to experiment
+// ------------------------------------------------------------
+// Don't use alloca calls. As alloca() is not part of ANSI C, this
+// workaround option is provided for compilers lacking this de-facto
+// standard function. The way it works is allocating from heap, and
+// relying on garbage collection to free it eventually. This is of
+// course much less optimal than real alloca().
+#define MICROPY_NO_ALLOCA                   (0)
+// Avoid using C stack when making Python function calls.
+// C stack still may be used if there's no free heap.
+#define MICROPY_STACKLESS                   (0)
+// Never use C stack when making Python function calls.
+#define MICROPY_STACKLESS_STRICT            (0)
+// Whether to build functions that print debugging info:
+//   mp_bytecode_print
+//   mp_parse_node_print
+#define MICROPY_DEBUG_PRINTERS              (0)
+// ------------------------------------------------------------
+
 // object representation and NLR handling
 #define MICROPY_OBJ_REPR                    (MICROPY_OBJ_REPR_A)
 #define MICROPY_NLR_SETJMP                  (1)
@@ -47,14 +67,29 @@
 #define MICROPY_COMP_MODULE_CONST           (1)
 #define MICROPY_COMP_TRIPLE_TUPLE_ASSIGN    (1)
 
-// optimisations
+// optimizations
 #define MICROPY_OPT_COMPUTED_GOTO           (1)
 #define MICROPY_OPT_MPZ_BITWISE             (1)
 
 // Python internal features
+// Whether to return number of collected objects from gc.collect()
+#ifdef CONFIG_MICROPY_GC_COLLECT_RETVAL
+#define MICROPY_PY_GC_COLLECT_RETVAL        (1)
+#else
+#define MICROPY_PY_GC_COLLECT_RETVAL        (0)
+#endif
 #define MICROPY_READER_VFS                  (1)
 #define MICROPY_ENABLE_GC                   (1)
+// Be conservative and always clear to zero newly (re)allocated memory in the GC.
+// This helps eliminate stray pointers that hold on to memory that's no longer used.
+// It decreases performance due to unnecessary memory clearing.
+#define MICROPY_GC_CONSERVATIVE_CLEAR       (1)
+// Whether to enable finalisers in the garbage collector (ie call __del__)
+#ifdef CONFIG_MICROPY_ENABLE_FINALISER
 #define MICROPY_ENABLE_FINALISER            (1)
+#else
+#define MICROPY_ENABLE_FINALISER            (0)
+#endif
 #define MICROPY_STACK_CHECK                 (1)
 #define MICROPY_ENABLE_EMERGENCY_EXCEPTION_BUF (1)
 #define MICROPY_KBD_EXCEPTION               (1)
@@ -78,10 +113,10 @@
 #define MICROPY_QSTR_EXTRA_POOL             mp_qstr_frozen_const_pool
 #define MICROPY_CAN_OVERRIDE_BUILTINS       (1)
 #define MICROPY_USE_INTERNAL_ERRNO          (1)
-#define MICROPY_USE_INTERNAL_PRINTF         (0) // ESP32 SDK requires its own printf
-#define MICROPY_PY_SYS_EXC_INFO             (1)
-#define MICROPY_ENABLE_SCHEDULER            (1)
-#define MICROPY_SCHEDULER_DEPTH             (8)
+#define MICROPY_USE_INTERNAL_PRINTF         (0) // ESP32 SDK requires its own printf, do NOT change
+#define MICROPY_ENABLE_SCHEDULER            (1) // Do NOT change
+// Maximum number of entries in the scheduler
+#define MICROPY_SCHEDULER_DEPTH             (CONFIG_MICROPY_SCHEDULER_DEPTH)
 
 #define MICROPY_VFS                         (1) // !! DO NOT CHANGE, MUST BE 1 !!
 #define MICROPY_VFS_FAT                     (0) // !! DO NOT CHANGE, NOT USED  !!
@@ -89,7 +124,11 @@
 // control over Python builtins
 #define MICROPY_PY_FUNCTION_ATTRS           (1)
 #define MICROPY_PY_STR_BYTES_CMP_WARN       (1)
+#ifdef CONFIG_MICROPY_USE_UNICODE
 #define MICROPY_PY_BUILTINS_STR_UNICODE     (1)
+#else
+#define MICROPY_PY_BUILTINS_STR_UNICODE     (0)
+#endif
 #define MICROPY_PY_BUILTINS_STR_CENTER      (1)
 #define MICROPY_PY_BUILTINS_STR_PARTITION   (1)
 #define MICROPY_PY_BUILTINS_STR_SPLITLINES  (1)
@@ -143,7 +182,8 @@
 #define MICROPY_PY_UTIME_MP_HAL             (1)
 #define MICROPY_PY_THREAD                   (1)
 #define MICROPY_PY_THREAD_GIL               (1)
-#define MICROPY_PY_THREAD_GIL_VM_DIVISOR    (32)
+// Number of VM jump-loops to do before releasing the GIL.
+#define MICROPY_PY_THREAD_GIL_VM_DIVISOR    (CONFIG_MICROPY_PY_THREAD_GIL_VM_DIVISOR)
 
 // extended modules
 #define MICROPY_PY_UCTYPES                  (1)
@@ -164,11 +204,9 @@
 #define MICROPY_PY_MACHINE_SPI_MSB          (0)
 #define MICROPY_PY_MACHINE_SPI_LSB          (1)
 #define MICROPY_PY_MACHINE_SPI_MAKE_NEW     machine_hw_spi_make_new
-#define MICROPY_PY_MACHINE_SPI_MIN_DELAY    (0)
-#define MICROPY_PY_MACHINE_SPI_MAX_BAUDRATE (ets_get_cpu_frequency() * 1000000 / 200) // roughly
 #define MICROPY_PY_USSL                     (1)
 #define MICROPY_SSL_MBEDTLS                 (1)
-#define MICROPY_PY_USSL_FINALISER           (1)
+#define MICROPY_PY_USSL_FINALISER           (0) // Crashes on gc if enabled!
 #define MICROPY_PY_UHASHLIB                 (0) // We use the ESP32 version
 #define MICROPY_PY_UHASHLIB_SHA1            (MICROPY_PY_USSL && MICROPY_SSL_MBEDTLS)
 
@@ -177,14 +215,15 @@
 #else
 #define MICROPY_PY_WEBSOCKET                (0)
 #endif
-#define MICROPY_PY_OS_DUPTERM      			(0)
-#define MICROPY_PY_WEBREPL   		        (0)
+#define MICROPY_PY_OS_DUPTERM               (0) // not supported, do NOT change
+#define MICROPY_PY_WEBREPL                  (0) // not supported, do NOT change
 
 #ifdef CONFIG_MICROPY_PY_FRAMEBUF
 #define MICROPY_PY_FRAMEBUF                 (1)
 #else
 #define MICROPY_PY_FRAMEBUF                 (0)
 #endif
+#define MICROPY_PY_USOCKET_EVENTS           (MICROPY_PY_WEBREPL)
 
 /*
  * Defined in 'component.mk'
@@ -205,8 +244,8 @@
 #endif
 #define MICROPY_FATFS_RPATH                 (2)
 #define MICROPY_FATFS_MAX_SS                (4096)
-#define MICROPY_FATFS_MAX_LFN               (CONFIG_FATFS_MAX_LFN)  // Get from config
-#define MICROPY_FATFS_LFN_CODE_PAGE         (CONFIG_FATFS_CODEPAGE) // Get from config
+#define MICROPY_FATFS_MAX_LFN               (CONFIG_FATFS_MAX_LFN)  // Get from sdkconfig
+#define MICROPY_FATFS_LFN_CODE_PAGE         (CONFIG_FATFS_CODEPAGE) // Get from sdkconfig
 
 #define mp_type_fileio                      nativefs_type_fileio
 #define mp_type_textio                      nativefs_type_textio
@@ -323,16 +362,9 @@ extern const struct _mp_obj_module_t mp_module_bluetooth;
 
 #define MP_STATE_PORT MP_STATE_VM
 
-#if CONFIG_SPIRAM_SUPPORT
 #define MICROPY_PORT_ROOT_POINTERS \
-    const char *readline_hist[80]; \
-    mp_obj_list_t mod_network_nic_list;                         \
+    const char *readline_hist[20]; \
     mp_obj_t machine_pin_irq_handler[40];
-#else
-#define MICROPY_PORT_ROOT_POINTERS \
-    const char *readline_hist[16]; \
-    mp_obj_t machine_pin_irq_handler[40];
-#endif
 
 // type definitions for the specific machine
 #define BYTES_PER_WORD (4)

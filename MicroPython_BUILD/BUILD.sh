@@ -29,17 +29,19 @@
 
 # Options:
 #   -jN                                           - make with multicore option, N should be the number of cores used 
-#   -v            | --verbose                     - enable verbose output, default: quiet output
-#   -f8           | --flashsize8                  - declare the Flash size of 8 MB
-#   -f16          | --flashsize16                 - declare the Flash size of 16 MB
-#   -fs <FS_size> | --fssize=<FS_size>            - declare the size of Flash file system in KB
+#   -v             | --verbose                    - enable verbose output, default: quiet output
+#   -f8            | --flashsize8                 - declare the Flash size of 8 MB
+#   -f16           | --flashsize16                - declare the Flash size of 16 MB
+#   -fs <FS_size>  | --fssize=<FS_size>           - declare the size of Flash file system in KB
 #                                                   default: fit the Flash size
-#   -a <app_size> | --appsize=<app_size>          - declare the size of application partition in KB
+#   -a <app_size>  | --appsize=<app_size>         - declare the size of application partition in KB
 #                                                   default: auto detect needed size
 #                                                   the actual size will be 128 KB smaller then the declared size
+#   -p <comm_port> | --port=<comm_port>           - overwritte configured comm port, use the specified instead
+#   -b <bdrate>    | --bdrate=<bdrate>            - overwritte configured baud rate, use the specified instead
 
 # Note:
-#   Multiple commands can be given
+#   Multiple options and commands can be given
 
 
 # #################################################################
@@ -48,7 +50,8 @@
 
 
 #=======================
-TOOLS_VER=ver20180412.id
+TOOLS_VER=ver20180515.id
+BUILD_VER=ver20180516.id
 #=======================
 
 # -----------------------------
@@ -64,6 +67,8 @@ FORCE_3PART="no"
 POSITIONAL_ARGS=()
 BUILD_TYPE=""
 BUILD_BASE_DIR=${PWD}
+BUILD_COMPORT=""
+BUILD_BDRATE=""
 
 # ---------------------------------------
 # Include functions used in build process
@@ -90,6 +95,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Goto base repository directory
 cd ../
 
 # -----------------------------------

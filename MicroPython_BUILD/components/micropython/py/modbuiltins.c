@@ -4,6 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2018 LoBo (https://github.com/loboris)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -186,10 +187,17 @@ STATIC mp_obj_t mp_builtin_dir(size_t n_args, const mp_obj_t *args) {
         // Make a list of names in the given object
         // Implemented by probing all possible qstrs with mp_load_method_maybe
         size_t nqstr = QSTR_TOTAL();
-        for (size_t i = 1; i < nqstr; ++i) {
+        for (size_t i = MP_QSTR_ + 1; i < nqstr; ++i) {
             mp_obj_t dest[2];
-            mp_load_method_maybe(args[0], i, dest);
+            mp_load_method_protected(args[0], i, dest, false);
             if (dest[0] != MP_OBJ_NULL) {
+                #if MICROPY_PY_ALL_SPECIAL_METHODS
+                // Support for __dir__: see if we can dispatch to this special method
+                // This relies on MP_QSTR__dir__ being first after MP_QSTR_
+                if (i == MP_QSTR___dir__ && dest[1] != MP_OBJ_NULL) {
+                    return mp_call_method_n_kw(0, 0, dest);
+                }
+                #endif
                 mp_obj_list_append(dir, MP_OBJ_NEW_QSTR(i));
             }
         }
@@ -525,14 +533,8 @@ MP_DEFINE_CONST_FUN_OBJ_2(mp_builtin_delattr_obj, mp_builtin_delattr);
 
 STATIC mp_obj_t mp_builtin_hasattr(mp_obj_t object_in, mp_obj_t attr_in) {
     qstr attr = mp_obj_str_get_qstr(attr_in);
-
     mp_obj_t dest[2];
-    // TODO: https://docs.python.org/3/library/functions.html?highlight=hasattr#hasattr
-    // explicitly says "This is implemented by calling getattr(object, name) and seeing
-    // whether it raises an AttributeError or not.", so we should explicitly wrap this
-    // in nlr_push and handle exception.
-    mp_load_method_maybe(object_in, attr, dest);
-
+    mp_load_method_protected(object_in, attr, dest, false);
     return mp_obj_new_bool(dest[0] != MP_OBJ_NULL);
 }
 MP_DEFINE_CONST_FUN_OBJ_2(mp_builtin_hasattr_obj, mp_builtin_hasattr);
@@ -546,6 +548,23 @@ STATIC mp_obj_t mp_builtin_locals(void) {
     return MP_OBJ_FROM_PTR(mp_locals_get());
 }
 MP_DEFINE_CONST_FUN_OBJ_0(mp_builtin_locals_obj, mp_builtin_locals);
+
+// LoBo: Get or set float print precision
+extern int float_precision;
+//-----------------------------------------------------------------------------------
+STATIC mp_obj_t mp_builtin_set_float_precision(size_t n_args, const mp_obj_t *args) {
+	if (n_args > 0) {
+		mp_int_t prec = mp_obj_get_int(args[0]);
+		if ((prec >= 4) && (prec <= 16)) {
+			float_precision = prec;
+		}
+		else {
+			mp_raise_ValueError("Precision must be 4 - 16");
+		}
+	}
+    return mp_obj_new_int(float_precision);
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_builtin_set_float_precision_obj, 0, 1, mp_builtin_set_float_precision);
 
 // These are defined in terms of MicroPython API functions right away
 MP_DEFINE_CONST_FUN_OBJ_1(mp_builtin_id_obj, mp_obj_id);
@@ -669,6 +688,7 @@ STATIC const mp_rom_map_elem_t mp_module_builtins_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_round), MP_ROM_PTR(&mp_builtin_round_obj) },
     { MP_ROM_QSTR(MP_QSTR_sorted), MP_ROM_PTR(&mp_builtin_sorted_obj) },
     { MP_ROM_QSTR(MP_QSTR_sum), MP_ROM_PTR(&mp_builtin_sum_obj) },
+    { MP_ROM_QSTR(MP_QSTR_float_precision), MP_ROM_PTR(&mp_builtin_set_float_precision_obj) },
 
     // built-in exceptions
     { MP_ROM_QSTR(MP_QSTR_BaseException), MP_ROM_PTR(&mp_type_BaseException) },

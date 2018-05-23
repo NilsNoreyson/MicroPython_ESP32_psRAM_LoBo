@@ -30,6 +30,7 @@
 #include <string.h>
 #include <assert.h>
 #include "mphalport.h"
+#include "soc/cpu.h"
 
 #include "py/emitglue.h"
 #include "py/objtype.h"
@@ -37,7 +38,7 @@
 #include "py/bc0.h"
 #include "py/bc.h"
 
-#if 0
+#if 0 && MICROPY_DEBUG_PRINTERS
 #define TRACE(ip) printf("sp=%d ", (int)(sp - &code_state->state[0] + 1)); mp_bytecode_print2(ip, 1, code_state->fun_bc->const_table);
 #else
 #define TRACE(ip)
@@ -118,7 +119,9 @@
 //  MP_VM_RETURN_NORMAL, sp valid, return value in *sp
 //  MP_VM_RETURN_YIELD, ip, sp valid, yielded value in *sp
 //  MP_VM_RETURN_EXCEPTION, exception in fastn[0]
-mp_vm_return_kind_t mp_execute_bytecode(mp_code_state_t *code_state, volatile mp_obj_t inject_exc) {
+//================================================================================================
+mp_vm_return_kind_t IRAM_ATTR mp_execute_bytecode(mp_code_state_t *code_state, volatile mp_obj_t inject_exc)
+{
 	mp_hal_set_wdt_tmo(); // LoBo
 #define SELECTIVE_EXC_IP (0)
 #if SELECTIVE_EXC_IP
@@ -919,7 +922,7 @@ unwind_jump:;
                             // Couldn't allocate codestate on heap: in the strict case raise
                             // an exception, otherwise just fall through to stack allocation.
                             #if MICROPY_STACKLESS_STRICT
-                        deep_recursion_error:
+                            deep_recursion_error:
                             mp_raise_recursion_depth();
                             #endif
                         } else
@@ -1325,19 +1328,28 @@ pending_exception_check:
 
                 #if MICROPY_PY_THREAD_GIL
                 #if MICROPY_PY_THREAD_GIL_VM_DIVISOR
-                if (--gil_divisor == 0) {
-                    gil_divisor = MICROPY_PY_THREAD_GIL_VM_DIVISOR;
-                #else
-                {
+                if (--gil_divisor == 0)
                 #endif
-                    #if MICROPY_ENABLE_SCHEDULER
-                    // can only switch threads if the scheduler is unlocked
-                    if (MP_STATE_VM(sched_state) == MP_SCHED_IDLE)
+                {
+                    #if MICROPY_PY_THREAD_GIL_VM_DIVISOR
+                    gil_divisor = MICROPY_PY_THREAD_GIL_VM_DIVISOR;
                     #endif
-                    {
-                    mp_hal_reset_wdt();// LoBo
-                    MP_THREAD_GIL_EXIT();
-                    MP_THREAD_GIL_ENTER();
+                    if (!MP_STATE_VM(thread_lock)) { // LoBo
+                        #if MICROPY_ENABLE_SCHEDULER
+                        // can only switch threads if the scheduler is unlocked
+                        if (MP_STATE_VM(sched_state) == MP_SCHED_IDLE)
+                        #endif
+                        {
+                            // LoBo
+                            volatile uint32_t sp = (uint32_t)get_sp();
+                            mp_thread_set_sp((void *)sp, MP_STATE_THREAD(stack_top));
+                            void **ptrs = (void**)(void*)&mp_state_ctx;
+                            mp_thread_set_ptrs(ptrs, offsetof(mp_state_ctx_t, vm.qstr_last_chunk) / sizeof(void*));
+                            mp_hal_reset_wdt();
+                            // Switch threads
+                            MP_THREAD_GIL_EXIT();
+                            MP_THREAD_GIL_ENTER();
+                        }
                     }
                 }
                 #endif
@@ -1485,4 +1497,5 @@ unwind_loop:
             }
         }
     }
+    return MP_VM_RETURN_NORMAL;
 }
