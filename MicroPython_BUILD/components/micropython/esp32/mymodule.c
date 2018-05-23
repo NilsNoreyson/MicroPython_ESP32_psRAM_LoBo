@@ -84,7 +84,7 @@ int sample_rate = 16000;
 static const char *TAG = "espnow_example";
 int CONFIG_ESPNOW_CHANNEL = 1;
 int CONFIG_ESPNOW_SEND_COUNT = 100;
-int CONFIG_ESPNOW_SEND_DELAY = 1000;
+int CONFIG_ESPNOW_SEND_DELAY = 0;
 int CONFIG_ESPNOW_SEND_LEN= 200;
 char* CONFIG_ESPNOW_PMK="pmk1234567890123";
 char* CONFIG_ESPNOW_LMK="lmk1234567890123";
@@ -227,7 +227,7 @@ static void example_espnow_task(void *pvParameter)
     bool is_broadcast = false;
     int ret;
 
-    vTaskDelay(5000 / portTICK_RATE_MS);
+    //vTaskDelay(1000 / portTICK_RATE_MS);
     ESP_LOGI(TAG, "Start sending broadcast data");
 
     /* Start sending broadcast ESPNOW data. */
@@ -345,7 +345,7 @@ static void example_espnow_task(void *pvParameter)
                 }
                 else if (ret == EXAMPLE_ESPNOW_DATA_UNICAST) {
                     ESP_LOGI(TAG, "Receive %dth unicast data from: "MACSTR", len: %d", recv_seq, MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-
+                    printf("Fucking audio! \n");
                     /* If receive unicast ESPNOW data, also stop sending broadcast ESPNOW data. */
                     send_param->broadcast = false;
                 }
