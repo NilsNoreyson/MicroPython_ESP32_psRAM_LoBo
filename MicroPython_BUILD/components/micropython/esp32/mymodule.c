@@ -365,7 +365,8 @@ static void example_espnow_task(void *pvParameter)
 static esp_err_t example_espnow_blast(void *pvParameter)
 	{
 	  while (1){
-		vTaskDelay(2 / portTICK_RATE_MS);
+		vTaskDelay(1000 / portTICK_RATE_MS);
+		printf("send bc\n");
 	     /* Start sending broadcast ESPNOW data. */
 	    example_espnow_send_param_t *send_param = (example_espnow_send_param_t *)pvParameter;
 	    if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
@@ -440,7 +441,7 @@ static esp_err_t example_espnow_init_blast(void)
     }
     memcpy(send_param->dest_mac, example_broadcast_mac, ESP_NOW_ETH_ALEN);
     example_espnow_data_prepare(send_param);
-
+    printf("start blast task\n");
     xTaskCreate(example_espnow_blast, "example_blast_task", 2048, send_param, 4, NULL);
 
     return ESP_OK;
@@ -508,7 +509,7 @@ static esp_err_t example_espnow_init_receive(void)
     }
     memcpy(send_param->dest_mac, example_broadcast_mac, ESP_NOW_ETH_ALEN);
     example_espnow_data_prepare(send_param);
-    printf('rec\n');
+    printf("start receive task\n");
     xTaskCreate(example_espnow_task, "example_espnow_task", 2048, send_param, 4, NULL);
 
     return ESP_OK;
