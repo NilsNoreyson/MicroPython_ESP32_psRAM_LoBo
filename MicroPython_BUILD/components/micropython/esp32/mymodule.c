@@ -179,7 +179,7 @@ int example_espnow_data_parse(uint8_t *data, uint16_t data_len, uint8_t *state, 
 {
     example_espnow_data_t *buf = (example_espnow_data_t *)data;
     uint16_t crc, crc_cal = 0;
-
+    printf("%d-%d\n",(int ) data[0], (int ) data[1]);
     if (data_len < sizeof(example_espnow_data_t)) {
         ESP_LOGE(TAG, "Receive ESPNOW data too short, len:%d", data_len);
         return -1;
@@ -229,6 +229,7 @@ static void example_espnow_task(void *pvParameter)
 
     vTaskDelay(1000 / portTICK_RATE_MS);
     ESP_LOGI(TAG, "Start sending broadcast data");
+    printf("In the task \n");
 
     /* Start sending broadcast ESPNOW data. */
     example_espnow_send_param_t *send_param = (example_espnow_send_param_t *)pvParameter;
@@ -238,8 +239,10 @@ static void example_espnow_task(void *pvParameter)
         vTaskDelete(NULL);
     }
 
-    while (xQueueReceive(example_espnow_queue, &evt, portMAX_DELAY) == pdTRUE) {
-    	vTaskDelay(100 / portTICK_RATE_MS);
+    while (1) {
+    	if (xQueueReceive(example_espnow_queue, &evt, portMAX_DELAY) == pdTRUE)
+    	{
+    	//vTaskDelay(5 / portTICK_RATE_MS);
         switch (evt.id) {
             case EXAMPLE_ESPNOW_SEND_CB:
             {
@@ -287,6 +290,7 @@ static void example_espnow_task(void *pvParameter)
                 ret = example_espnow_data_parse(recv_cb->data, recv_cb->data_len, &recv_state, &recv_seq, &recv_magic);
 
                 free(recv_cb->data);
+                break;
                 if (ret == EXAMPLE_ESPNOW_DATA_BROADCAST) {
                     ESP_LOGI(TAG, "Receive %dth broadcast data from: "MACSTR", len: %d", recv_seq, MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
 
@@ -359,18 +363,60 @@ static void example_espnow_task(void *pvParameter)
                 ESP_LOGE(TAG, "Callback type error: %d", evt.id);
                 break;
         }
+      }
+    else {
+    	vTaskDelay(1000 / portTICK_RATE_MS);
     }
+   }
 }
 
 static esp_err_t example_espnow_blast(void *pvParameter)
 	{
+	   example_espnow_send_param_t *send_param = (example_espnow_send_param_t *)pvParameter;
+	   uint16_t buf_len = send_param->len*2*2;
+	   uint8_t *buf = calloc(buf_len, sizeof(uint8_t));
+
 	  while (1){
-		vTaskDelay(1000 / portTICK_RATE_MS);
+
+		  uint8_t *buf_ptr_read = buf;
+		  uint8_t *buf_ptr_write = buf;
+
+	      // read whole block of samples
+	      int bytes_read = 0;
+	      while(bytes_read == 0) {
+	         bytes_read = i2s_read_bytes(I2S_NUM_0, (char*) buf, buf_len, 2048);
+	      }
+	      uint32_t samples_read = bytes_read / 2 / (bits_per_sample / 8);
+		  for(int i = 0; i < samples_read; i++) {
+	      //for(int i = 0; i < send_param->len/2; i++) {
+	         // const char samp32[4] = {ptr_l[0], ptr_l[1], ptr_r[0], ptr_r[1]};
+
+	         // left
+	         buf_ptr_write[0] = buf_ptr_read[2]; // mid
+	         buf_ptr_write[1] = buf_ptr_read[3]; // high
+
+		        //buf_ptr_write[0] = 2; // mid
+		        //buf_ptr_write[1] = 3; // high
+
+
+	         buf_ptr_write += (I2S_BITS_PER_SAMPLE_16BIT / 8);
+	         buf_ptr_read += 2 * (bits_per_sample / 8);
+	      }
+
+	      // local echo
+	      int bytes_2_write = samples_read * (I2S_BITS_PER_SAMPLE_16BIT / 8);
+
+	      //cnt += samples_read;
+		  //bytes_written  = fwrite(buf , sizeof(char), bytes_2_write , f );
+
+		//vTaskDelay(10 / portTICK_RATE_MS);
 		printf("send bc\n");
 	     /* Start sending broadcast ESPNOW data. */
-	    example_espnow_send_param_t *send_param = (example_espnow_send_param_t *)pvParameter;
-	    if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
+
+	    //if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
+		if (esp_now_send(send_param->dest_mac, (uint8_t *) buf, send_param->len) != ESP_OK) {
 	        ESP_LOGE(TAG, "Send error");
+	        printf("send bc error\n");
 	        example_espnow_deinit(send_param);
 	        vTaskDelete(NULL);
 	    }
@@ -1004,7 +1050,7 @@ STATIC const mp_map_elem_t mymodule_globals_table[] = {
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_initULP), (mp_obj_t)&mymodule_initULP_obj },
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_ULPDeepSleep), (mp_obj_t)&mymodule_ULPDeepSleep_obj},
 	{ MP_OBJ_NEW_QSTR(MP_QSTR_espnow_blast), (mp_obj_t)&mymodule_espnow_blast_obj},
-	{ MP_OBJ_NEW_QSTR(MP_QSTR_espnow_receive), (mp_obj_t)&mymodule_espnow_receive},
+	{ MP_OBJ_NEW_QSTR(MP_QSTR_espnow_receive), (mp_obj_t)&mymodule_espnow_receive_obj},
 
 };
 
