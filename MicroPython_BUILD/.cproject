@@ -46,18 +46,21 @@
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/wear_levelling/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/soc/esp32/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/heap/include&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/mbedtls/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/mbedtls/port/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/app_update/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/mdns/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/ethernet/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/esp_adc_cal/include&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/nghttp/port/include&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/bt/include&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/bt/bluedroid/api/include&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/bt/bluedroid/api/include/api&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/mbedtls/mbedtls/include&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/esp_http_client/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/MicroPython_BUILD}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/MicroPython_BUILD/build/include}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/MicroPython_BUILD/components/micropython/genhdr}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/MicroPython_BUILD/build/genhdr}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/bt/include&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/bt/bluedroid/api/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${PWD}/../Tools/xtensa-esp32-elf/bin&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${PWD}/../Tools/xtensa-esp32-elf/xtensa-esp32-elf/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${IDF_PATH}/components/ulp/include&quot;"/>
@@ -68,6 +71,7 @@
 									<listOptionValue builtIn="false" value="LWIP_DNS=1"/>
 									<listOptionValue builtIn="false" value="LWIP_SOCKET=1"/>
 									<listOptionValue builtIn="false" value="IDF_USEHEAP=1"/>
+									<listOptionValue builtIn="false" value="HAVE_CONFIG_H"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.827066523" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>

@@ -155,6 +155,7 @@ STATIC mp_obj_t mp_sys_getsizeof(mp_obj_t obj) {
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(mp_sys_getsizeof_obj, mp_sys_getsizeof);
 #endif
 
+//--------------------------------
 STATIC mp_obj_t mp_sys_mpycore() {
 	mp_obj_t tuple[2];
 	tuple[0] = mp_obj_new_str(MICROPY_CORE_VERSION, strlen(MICROPY_CORE_VERSION));
@@ -164,35 +165,17 @@ STATIC mp_obj_t mp_sys_mpycore() {
 }
 MP_DEFINE_CONST_FUN_OBJ_0(mp_sys_mpycore_obj, mp_sys_mpycore);
 
-#ifdef CONFIG_MICROPY_USE_THREADED_REPL
-//------------------------------------
-STATIC mp_obj_t mp_sys_exec_repl(void)
+//--------------------------------------
+STATIC mp_obj_t mp_sys_espidf_info(void)
 {
-    for (;;) {
-        if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
-            if (pyexec_raw_repl() != 0) {
-                break;
-            }
-        }
-        else {
-            if (pyexec_friendly_repl() != 0) {
-                break;
-            }
-        }
-    }
-    prepareSleepReset(0, "ESP32: soft reboot\r\n");
-    esp_restart(); // no return !!
-    return mp_const_none;
-}
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(mp_sys_exec_repl_obj, mp_sys_exec_repl);
+	mp_obj_t tuple[3];
+	tuple[0] = mp_obj_new_str(MICROPY_ESPIDF_VERSION, strlen(MICROPY_ESPIDF_VERSION));
+	tuple[1] = mp_obj_new_str(MICROPY_ESPIDF_HASH, strlen(MICROPY_ESPIDF_HASH));
+	tuple[2] = mp_obj_new_str(MICROPY_ESPIDF_DATE, strlen(MICROPY_ESPIDF_DATE));
 
-//-------------------------------------
-STATIC mp_obj_t mp_sys_stack_size(void)
-{
-	return mp_obj_new_int(mpy_repl_stack_size);
+	return mp_obj_new_tuple(3, tuple);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(mp_sys_stack_size_obj, mp_sys_stack_size);
-#endif
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(mp_sys_espidf_info_obj, mp_sys_espidf_info);
 
 //------------------------------------------------------------------
 STATIC mp_obj_t mp_sys_timezone(size_t n_args, const mp_obj_t *args)
@@ -234,14 +217,11 @@ MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_sys_timezone_obj, 0, 1, mp_sys_timezone);
 STATIC const mp_rom_map_elem_t mp_module_sys_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_sys) },
 
-	#ifdef CONFIG_MICROPY_USE_THREADED_REPL
-	{ MP_ROM_QSTR(MP_QSTR_REPL),			MP_ROM_PTR(&mp_sys_exec_repl_obj) },
-	{ MP_ROM_QSTR(MP_QSTR_stackSize),		MP_ROM_PTR(&mp_sys_stack_size_obj) },
-	#endif
     { MP_ROM_QSTR(MP_QSTR_path),			MP_ROM_PTR(&MP_STATE_VM(mp_sys_path_obj)) },
     { MP_ROM_QSTR(MP_QSTR_argv),			MP_ROM_PTR(&MP_STATE_VM(mp_sys_argv_obj)) },
     { MP_ROM_QSTR(MP_QSTR_version),			MP_ROM_PTR(&version_obj) },
     { MP_ROM_QSTR(MP_QSTR_version_info),	MP_ROM_PTR(&mp_sys_version_info_obj) },
+    { MP_ROM_QSTR(MP_QSTR_espidf_info),		MP_ROM_PTR(&mp_sys_espidf_info_obj) },
     { MP_ROM_QSTR(MP_QSTR_implementation),	MP_ROM_PTR(&mp_sys_implementation_obj) },
     { MP_ROM_QSTR(MP_QSTR_mpycore),			MP_ROM_PTR(&mp_sys_mpycore_obj) },
     { MP_ROM_QSTR(MP_QSTR_tz),				MP_ROM_PTR(&mp_sys_timezone_obj) },

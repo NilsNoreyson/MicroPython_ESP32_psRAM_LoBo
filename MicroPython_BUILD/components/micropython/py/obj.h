@@ -180,7 +180,7 @@ static inline bool MP_OBJ_IS_QSTR(mp_const_obj_t o)
 #define MP_OBJ_NEW_QSTR(qst) ((mp_obj_t)((((mp_uint_t)(qst)) << 1) | 0x0002000000000001))
 
 #if MICROPY_PY_BUILTINS_FLOAT
-#define mp_const_float_e {((mp_obj_t)((uint64_t)0x4005bf0a8b125769 + 0x8004000000000000))}
+#define mp_const_float_e {((mp_obj_t)((uint64_t)0x4005bf0a8b145769 + 0x8004000000000000))}
 #define mp_const_float_pi {((mp_obj_t)((uint64_t)0x400921fb54442d18 + 0x8004000000000000))}
 
 static inline bool mp_obj_is_float(mp_const_obj_t o) {
@@ -676,7 +676,7 @@ bool mp_obj_equal(mp_obj_t o1, mp_obj_t o2);
 
 static inline bool mp_obj_is_integer(mp_const_obj_t o) { return MP_OBJ_IS_INT(o) || MP_OBJ_IS_TYPE(o, &mp_type_bool); } // returns true if o is bool, small int or long int
 mp_int_t mp_obj_get_int(mp_const_obj_t arg);
-uint64_t mp_obj_get_int64(mp_const_obj_t arg);
+int64_t mp_obj_get_int64(mp_const_obj_t arg);
 mp_int_t mp_obj_get_int_truncated(mp_const_obj_t arg);
 bool mp_obj_get_int_maybe(mp_const_obj_t arg, mp_int_t *value);
 #if MICROPY_PY_BUILTINS_FLOAT
@@ -703,7 +703,8 @@ void mp_obj_cell_set(mp_obj_t self_in, mp_obj_t obj);
 mp_int_t mp_obj_int_get_truncated(mp_const_obj_t self_in);
 // Will raise exception if value doesn't fit into mp_int_t
 mp_int_t mp_obj_int_get_checked(mp_const_obj_t self_in);
-uint64_t mp_obj_int64_get_checked(mp_const_obj_t self_in);
+int64_t mp_obj_int64_get_checked(mp_const_obj_t self_in);
+uint64_t mp_obj_uint64_get_checked(mp_const_obj_t self_in);
 
 // exception
 #define mp_obj_is_native_exception_instance(o) (mp_obj_get_type(o)->make_new == mp_obj_exception_make_new)

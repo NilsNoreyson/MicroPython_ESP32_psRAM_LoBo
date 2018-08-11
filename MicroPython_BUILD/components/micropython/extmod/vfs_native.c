@@ -52,7 +52,8 @@
 #include "driver/sdmmc_defs.h"
 #include "diskio.h"
 #include <fcntl.h>
-#include "diskio_spiflash.h"
+//#include "diskio_spiflash.h"
+#include "diskio_wl.h"
 #include "esp_partition.h"
 
 #include "py/nlr.h"
@@ -111,13 +112,14 @@ sdcard_config_t sdcard_config = {
 		CONFIG_SDCARD_CLK,
 		CONFIG_SDCARD_MOSI,
 		CONFIG_SDCARD_MISO,
-		CONFIG_SDCARD_CS
+		CONFIG_SDCARD_CS,
 #else
 		-1,
 		-1,
 		-1,
-		-1
+		-1,
 #endif
+		1
 };
 
 bool native_vfs_mounted[2] = {false, false};
@@ -744,7 +746,8 @@ static void _sdcard_mount()
 
 	esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
-        .max_files = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES
+        .max_files = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES,
+        .allocation_unit_size = 0
     };
 
 	// Configure sdmmc interface
@@ -753,7 +756,7 @@ static void _sdcard_mount()
 		sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 		sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
 		host.slot = VSPI_HOST;
-		host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+		host.max_freq_khz = (sdcard_config.hispeed > 0) ? SDMMC_FREQ_HIGHSPEED : SDMMC_FREQ_DEFAULT;
 		slot_config.dma_channel = 2;
 		_setPins(sdcard_config.miso, sdcard_config.mosi, sdcard_config.clk, sdcard_config.cs);
 
@@ -766,16 +769,18 @@ static void _sdcard_mount()
 	else {
 		sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 		sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-		host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-		_setPins(2, 14, 15, 13);
+        host.max_freq_khz = (sdcard_config.hispeed > 0) ? SDMMC_FREQ_HIGHSPEED : SDMMC_FREQ_DEFAULT;
 		if (sdcard_config.mode == 2) {
 	        // Use 1-line SD mode
+		    _setPins(4, 12, 15, 13);
 	        host.flags = SDMMC_HOST_FLAG_1BIT;
 	        slot_config.width = 1;
 		}
 		else {
 	        // Use 4-line SD mode
-			_setPins(4, 12, -1, -1);
+		    _setPins(4, 12, -1, -1);
+            host.flags = SDMMC_HOST_FLAG_4BIT;
+            slot_config.width = 4;
 		}
 	    ret = esp_vfs_fat_sdmmc_mount(VFS_NATIVE_SDCARD_MOUNT_POINT, &host, &slot_config, &mount_config, &sdmmc_card);
 	}
@@ -874,6 +879,7 @@ STATIC mp_obj_t native_vfs_mount(mp_obj_t self_in, mp_obj_t readonly, mp_obj_t m
 	    const esp_vfs_fat_mount_config_t mount_config = {
 			.format_if_mount_failed = true,
 			.max_files              = CONFIG_MICROPY_FATFS_MAX_OPEN_FILES,
+			.allocation_unit_size   = 0,
 		};
 		// Mount spi Flash filesystem using configuration from sdkconfig.h
 		esp_err_t err = esp_vfs_fat_spiflash_mount(VFS_NATIVE_MOUNT_POINT, VFS_NATIVE_INTERNAL_PART_LABEL, &mount_config, &s_wl_handle);
