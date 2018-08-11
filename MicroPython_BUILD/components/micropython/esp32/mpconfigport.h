@@ -291,6 +291,13 @@ extern const struct _mp_obj_module_t mp_module_requests;
 #define BUILTIN_MODULE_REQUESTS
 #endif
 
+#ifdef CONFIG_MICROPY_USE_REQUESTS
+extern const struct _mp_obj_module_t mp_module_requests;
+#define BUILTIN_MODULE_REQUESTS { MP_OBJ_NEW_QSTR(MP_QSTR_requests), (mp_obj_t)&mp_module_requests },
+#else
+#define BUILTIN_MODULE_REQUESTS
+#endif
+
 #ifdef CONFIG_MICROPY_USE_CURL
 extern const struct _mp_obj_module_t mp_module_curl;
 #define BUILTIN_MODULE_CURL { MP_OBJ_NEW_QSTR(MP_QSTR_curl), (mp_obj_t)&mp_module_curl },
