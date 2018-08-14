@@ -91,6 +91,8 @@ entry:
 
     touch_counter
     machine.mem32[0x50000130]&0x0000FFFF
+    see build/main(ulp_main.ld for the adresses of the variables
+    get it from python by reading the registers with machine.mem32
     */
 
 
@@ -156,7 +158,8 @@ touched:
 	JUMP pulsecheck
 
 changed:
-    wake
+    /*wake*/
+ 	/* alwas wake was one before doing the destructive work*/
 	/* Input state changed */
 	/* Has debounce_counter reached zero? */
 	move r3, debounce_counter

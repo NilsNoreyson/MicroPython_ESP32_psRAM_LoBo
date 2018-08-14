@@ -101,7 +101,10 @@ STATIC mp_obj_t mtp_config(mp_obj_t self_in, mp_obj_t value_in)
 {
     mtp_obj_t *self = self_in;
     uint16_t value = mp_obj_get_int(value_in);
-
+    //fsm will allow a time to do alwasy the readyout and is not tirggerd by the user space
+    // important to work in ulp mode
+    touch_pad_set_fsm_mode(0);
+    touch_pad_set_trigger_mode(1);
     esp_err_t err = touch_pad_config(self->touchpad_id, value);
     if (err != ESP_OK) {
     	mp_raise_ValueError("Touch pad config error");
