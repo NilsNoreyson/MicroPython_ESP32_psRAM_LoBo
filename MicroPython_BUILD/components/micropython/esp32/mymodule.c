@@ -545,8 +545,8 @@ static void init_ulp_program()
      * GPIO15 may be connected to ground to suppress boot messages.
      * GPIO12 may be pulled high to select flash voltage.
      */
-    rtc_gpio_isolate(GPIO_NUM_12);
-    rtc_gpio_isolate(GPIO_NUM_15);
+    //rtc_gpio_isolate(GPIO_NUM_12);
+	//rtc_gpio_isolate(GPIO_NUM_15);
 
     /* Set ULP wake up period to T = 20ms (3095 cycles of RTC_SLOW_CLK clock).
      * Minimum pulse width has to be T * (ulp_debounce_counter + 1) = 80ms.
