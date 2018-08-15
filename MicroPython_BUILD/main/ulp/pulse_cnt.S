@@ -71,6 +71,22 @@ io_number:
 touch_counter:
 	.long 0
 
+        .global touch_array
+touch_array:  .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+        .long 0
+
+
 
 	/* Code goes into .text section */
 	.text
@@ -93,6 +109,27 @@ entry:
     machine.mem32[0x50000130]&0x0000FFFF
     see build/main(ulp_main.ld for the adresses of the variables
     get it from python by reading the registers with machine.mem32
+
+    machine.mem32[0x3ff48800+0x0084] = machine.mem32[0x3ff48800+0x0084]|(1<<13)
+
+    set time-trigger on
+    machine.mem32[0x3ff48800+0x0084] = machine.mem32[0x3ff48800+0x0084]&~(1<<13)
+
+
+
+    ----
+    set time-trigger off and trigger by software
+    machine.mem32[0x3ff48800+0x0084] = machine.mem32[0x3ff48800+0x0084]|(1<<13)
+
+
+    Reset SENS_TOUCH_START_EN to restart measurment
+    machine.mem32[0x3ff48800+0x0084] = machine.mem32[0x3ff48800+0x0084]&~(1<<12)
+
+    SENS_TOUCH_START_EN start measurment
+    machine.mem32[0x3ff48800+0x0084] = machine.mem32[0x3ff48800+0x0084]|1<<12
+
+    ----
+
     */
 
 

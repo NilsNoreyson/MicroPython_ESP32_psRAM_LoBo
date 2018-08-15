@@ -512,6 +512,8 @@ void count_pulses()
 
 }
 
+RTC_DATA_ATTR int touch_array[10] = {0,1,2,3,4,5,6,7,8,13};
+
 static void init_ulp_program()
 {
     esp_err_t err = ulp_load_binary(0, ulp_main_bin_start,
