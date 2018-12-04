@@ -11,7 +11,6 @@ import _thread
 import network
 import time
 import socket
-import websocket
 import gc
 import re
 
@@ -657,6 +656,7 @@ class MicroWebSrv :
             if 'MicroWebTemplate' in globals() :
                 with open(filepath, 'r') as file :
                     code = file.read()
+                gc.collect()
                 mWebTmpl = MicroWebTemplate(code, escapeStrFunc=MicroWebSrv.HTMLEscape, filepath=filepath)
                 try :
                     tmplResult = mWebTmpl.Execute()

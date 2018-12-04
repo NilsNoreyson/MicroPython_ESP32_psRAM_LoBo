@@ -70,7 +70,7 @@ void mp_init(void) {
 #endif
 
     #if MICROPY_KBD_EXCEPTION
-    // initialise the exception object for raising KeyboardInterrupt
+    // initialize the exception object for raising KeyboardInterrupt
     MP_STATE_VM(mp_kbd_exception).base.type = &mp_type_KeyboardInterrupt;
     MP_STATE_VM(mp_kbd_exception).traceback_alloc = 0;
     MP_STATE_VM(mp_kbd_exception).traceback_len = 0;
@@ -1082,6 +1082,22 @@ void mp_load_method(mp_obj_t base, qstr attr, mp_obj_t *dest) {
                     "'%s' object has no attribute '%q'",
                     mp_obj_get_type_str(base), attr));
             }
+        }
+    }
+}
+
+// Acts like mp_load_method_maybe but catches AttributeError, and all other exceptions if requested
+void mp_load_method_protected(mp_obj_t obj, qstr attr, mp_obj_t *dest, bool catch_all_exc) {
+    nlr_buf_t nlr;
+    if (nlr_push(&nlr) == 0) {
+        mp_load_method_maybe(obj, attr, dest);
+        nlr_pop();
+    } else {
+        if (!catch_all_exc
+            && !mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(((mp_obj_base_t*)nlr.ret_val)->type),
+                MP_OBJ_FROM_PTR(&mp_type_AttributeError))) {
+            // Re-raise the exception
+            nlr_raise(MP_OBJ_FROM_PTR(nlr.ret_val));
         }
     }
 }
